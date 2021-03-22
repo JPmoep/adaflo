@@ -86,6 +86,7 @@ LevelSetBaseAlgorithm<dim>::LevelSetBaseAlgorithm(const FlowParameters &paramete
           fe_p->get_poly_space_numbering_inverse();
         */
 
+       this->pcout << "simplex! fe_mine dofs per cell: " << fe_mine->dofs_per_cell << "  fe_p dofs per cell: " << fe_p->dofs_per_cell << std::endl;
         std::vector<unsigned int> lexicographic_ls(fe_mine->dofs_per_cell);
         std::vector<unsigned int> lexicographic_p(fe_p->dofs_per_cell);
 
@@ -109,17 +110,23 @@ LevelSetBaseAlgorithm<dim>::LevelSetBaseAlgorithm(const FlowParameters &paramete
           dynamic_cast<const FE_Q_iso_Q1<dim> &>(*this->fe);
         const std::vector<unsigned int> lexicographic_ls =
           fe_mine.get_poly_space_numbering_inverse();
+        this->pcout << " fe_mine dofs per cell: " << fe_mine.dofs_per_cell << std::endl; 
+        //this->pcout << "  lexicographic ls: " << lexicographic_ls[0][0] << std::endl;
         if (const FE_Q<dim> *fe_p =
               dynamic_cast<const FE_Q<dim> *>(&this->navier_stokes.get_fe_p()))
           {
             const std::vector<unsigned int> lexicographic_p =
               fe_p->get_poly_space_numbering_inverse();
+              this->pcout << " fe_p dofs per cell: " << fe_p->dofs_per_cell << std::endl; 
+              //this->pcout << "  lexicographic p: " << lexicographic_p[3][1] << std::endl;
             for (unsigned int j = 0; j < fe_p->dofs_per_cell; ++j)
               {
                 const Point<dim> p = fe_p->get_unit_support_points()[lexicographic_p[j]];
-                for (unsigned int i = 0; i < fe_mine.dofs_per_cell; ++i)
+                for (unsigned int i = 0; i < fe_mine.dofs_per_cell; ++i){
                   interpolation_concentration_pressure(j, i) =
                     this->fe->shape_value(lexicographic_ls[i], p);
+                  this->pcout << "IP(" <<j <<","<< i <<") = " << interpolation_concentration_pressure(j,i) << std::endl; 
+                }
               }
           }
         else if (const FE_Q_DG0<dim> *fe_p =
@@ -127,6 +134,7 @@ LevelSetBaseAlgorithm<dim>::LevelSetBaseAlgorithm(const FlowParameters &paramete
           {
             const std::vector<unsigned int> lexicographic_p =
               fe_p->get_poly_space_numbering_inverse();
+             this->pcout << " fe_p dofs per cell: " << fe_p->dofs_per_cell << std::endl; //"  lexicographic p: " << lexicographic_p << std::endl;  
             for (unsigned int j = 0; j < fe_p->dofs_per_cell - 1; ++j)
               {
                 const Point<dim> p = fe_p->get_unit_support_points()[lexicographic_p[j]];

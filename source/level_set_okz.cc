@@ -334,6 +334,8 @@ LevelSetOKZSolver<dim>::local_compute_force(
   FEEvaluation<dim, ls_degree == -1 ? -1 : (velocity_degree - 1), n_q_points, 1>
     pre_values(data, 1, 0);
 
+//this->pcout << "ls degree = " << ls_degree << " velocity degree = " << velocity_degree << std::endl;
+
   typedef VectorizedArray<double> vector_t;
   const bool                      use_variable_parameters =
     this->parameters.density_diff != 0 || this->parameters.viscosity_diff != 0;
@@ -363,16 +365,19 @@ LevelSetOKZSolver<dim>::local_compute_force(
             }
         }
 
-      this->pcout << "pre val dofs = " << pre_values.dofs_per_cell << " ls val dofs= " << ls_values.dofs_per_cell << std::endl;
+      //this->pcout << "pre val dofs = " << pre_values.dofs_per_cell << " ls val dofs= " << ls_values.dofs_per_cell << std::endl;
       // interpolate ls values onto pressure
       if (this->parameters.interpolate_grad_onto_pressure)
         {
           for (unsigned int i = 0; i < pre_values.dofs_per_cell; ++i)
             {
               vector_t projected_value = vector_t();
-              for (unsigned int j = 0; j < ls_values.dofs_per_cell; ++j)
+              for (unsigned int j = 0; j < ls_values.dofs_per_cell; ++j){
                 projected_value += this->interpolation_concentration_pressure(i, j) *
                                    ls_values.get_dof_value(j);
+                this->pcout << "j = " << j << "ls val  = " << ls_values.get_dof_value(j)  << std::endl;
+              }
+              this->pcout << "i = " << i << "projected val  = " << projected_value  << std::endl;
               pre_values.submit_dof_value(projected_value, i);
             }
           pre_values.evaluate(false, true);
@@ -386,7 +391,7 @@ LevelSetOKZSolver<dim>::local_compute_force(
       curv_values.read_dof_values_plain(this->solution.block(1));
       curv_values.evaluate(true, false);
       
-      this->pcout << "n_q_points = " << n_q_points << "  curv values nq points = " << curv_values.n_q_points << std::endl;
+      //this->pcout << "n_q_points = " << n_q_points << "  curv values nq points = " << curv_values.n_q_points << std::endl;
       
       // evaluate surface tension force and gravity force
       for (unsigned int q = 0; q < curv_values.n_q_points; ++q)
@@ -398,8 +403,8 @@ LevelSetOKZSolver<dim>::local_compute_force(
                pre_values.get_gradient(q) :
                ls_values.get_gradient(q));
 
-          this->pcout << "pre val grad = " << pre_values.get_gradient(q) <<  std::endl;
-          this->pcout << " ls val grad = " << ls_values.get_gradient(q) << std::endl;
+          //this->pcout << "q = " << q << "   pre val grad = " << pre_values.get_gradient(q) 
+          //    << " ls val grad = " << ls_values.get_gradient(q) << std::endl;
 
           // gravity
           vector_t actual_rho =

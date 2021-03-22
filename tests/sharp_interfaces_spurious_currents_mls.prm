@@ -24,7 +24,7 @@ subsection Two phase
   set viscosity            = 0.1
   set viscosity difference = 0
   set surface tension      = 1.0
-  set epsilon              = 0.1
+  set epsilon              = 1.5
   set gravity              = 0.
   set concentration subdivisions = 3
   set grad pressure compatible = 1
@@ -42,7 +42,7 @@ subsection Navier-Stokes
   set dimension            = 2
   set global refinements   = 4
   set adaptive refinements = 0
-  set velocity degree      = 2
+  set velocity degree      = 5
   subsection Solver
     set NL max iterations            = 10
     set NL tolerance                 = 1.e-9

@@ -980,11 +980,13 @@ compute_force_vector_sharp_interface(const Quadrature<dim - 1> &surface_quad,
           for (unsigned int j = 0; j < fe_p->dofs_per_cell; ++j)
             {
               const Point<dim> p = fe_p->get_unit_support_points()[lexicographic_p[j]];
-              for (unsigned int i = 0; i < fe_mine.dofs_per_cell; ++i)
+              for (unsigned int i = 0; i < fe_mine.dofs_per_cell; ++i){
                 interpolation_concentration_pressure(j, i) =
                   dof_handler.get_fe().shape_value(lexicographic_ls[i], p);
+                pcout << "IP(" <<j <<","<< i <<") = " << interpolation_concentration_pressure(j,i) << std::endl; 
+              }
             }
-            pcout << "j = " << fe_p->dofs_per_cell << " and i = " << fe_mine.dofs_per_cell << std::endl;
+            //pcout << "j = " << fe_p->dofs_per_cell << " and i = " << fe_mine.dofs_per_cell << std::endl;
         }
       else if (const FE_Q_DG0<dim> *fe_p =
                   dynamic_cast<const FE_Q_DG0<dim> *>(&navier_stokes_getfep))
@@ -995,11 +997,13 @@ compute_force_vector_sharp_interface(const Quadrature<dim - 1> &surface_quad,
           for (unsigned int j = 0; j < fe_p->dofs_per_cell - 1; ++j)
             {
               const Point<dim> p = fe_p->get_unit_support_points()[lexicographic_p[j]];
-              for (unsigned int i = 0; i < fe_mine.dofs_per_cell; ++i)
+              for (unsigned int i = 0; i < fe_mine.dofs_per_cell; ++i){
                 interpolation_concentration_pressure(j, i) =
                   dof_handler.get_fe().shape_value(lexicographic_ls[i], p);
+                pcout << "IP(" <<j <<","<< i <<") = " << interpolation_concentration_pressure(j,i) << std::endl; 
+              }
             }
-          pcout << "j = " << fe_p->dofs_per_cell << " and i = " << fe_mine.dofs_per_cell << std::endl;
+         // pcout << "j = " << fe_p->dofs_per_cell << " and i = " << fe_mine.dofs_per_cell << std::endl;
         }
     }
 
@@ -1136,8 +1140,8 @@ compute_force_vector_sharp_interface(const Quadrature<dim - 1> &surface_quad,
         {
           Assert(phi_normal.get_value(q).norm() > 0, ExcNotImplemented());
          // if(params.interpolate_grad_onto_pressure)
-              pcout << "phi normal values = " << phi_normal.get_value(q) << "  phi normal norm =  " << phi_normal.get_value(q).norm() 
-                  << "pre val grad = " << pre_val.get_gradient(q) << "  pre val grad norm =  " << pre_val.get_gradient(q).norm() << std::endl;
+             // pcout << "phi normal values = " << phi_normal.get_value(q) << "  phi normal norm =  " << phi_normal.get_value(q).norm() 
+             //     << "pre val grad = " << pre_val.get_gradient(q) << "  pre val grad norm =  " << pre_val.get_gradient(q).norm() << std::endl;
               //Assert(pre_val.get_gradient(q).norm() > 0, ExcNotImplemented());
           //const auto normal = phi_normal.get_value(q) / phi_normal.get_value(q).norm();
           const auto normal = (params.interpolate_grad_onto_pressure ?
