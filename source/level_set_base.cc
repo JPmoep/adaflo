@@ -99,9 +99,11 @@ LevelSetBaseAlgorithm<dim>::LevelSetBaseAlgorithm(const FlowParameters &paramete
         for (unsigned int j = 0; j < fe_p->dofs_per_cell; ++j)
           {
             const Point<dim> p = fe_p->get_unit_support_points()[lexicographic_p[j]];
-            for (unsigned int i = 0; i < fe_mine->dofs_per_cell; ++i)
+            for (unsigned int i = 0; i < fe_mine->dofs_per_cell; ++i){
               interpolation_concentration_pressure(j, i) =
                 this->fe->shape_value(lexicographic_ls[i], p);
+              this->pcout << "IP(" <<j <<","<< i <<") = " << interpolation_concentration_pressure(j,i) << std::endl; 
+            }
           }
       }
     else
@@ -117,7 +119,7 @@ LevelSetBaseAlgorithm<dim>::LevelSetBaseAlgorithm(const FlowParameters &paramete
           {
             const std::vector<unsigned int> lexicographic_p =
               fe_p->get_poly_space_numbering_inverse();
-              this->pcout << " fe_p dofs per cell: " << fe_p->dofs_per_cell << std::endl; 
+              this->pcout << "FE_Q: fe_p dofs per cell: " << fe_p->dofs_per_cell << std::endl; 
               //this->pcout << "  lexicographic p: " << lexicographic_p[3][1] << std::endl;
             for (unsigned int j = 0; j < fe_p->dofs_per_cell; ++j)
               {
@@ -134,13 +136,15 @@ LevelSetBaseAlgorithm<dim>::LevelSetBaseAlgorithm(const FlowParameters &paramete
           {
             const std::vector<unsigned int> lexicographic_p =
               fe_p->get_poly_space_numbering_inverse();
-             this->pcout << " fe_p dofs per cell: " << fe_p->dofs_per_cell << std::endl; //"  lexicographic p: " << lexicographic_p << std::endl;  
+             this->pcout << " FE_Q_DG0: fe_p dofs per cell: " << fe_p->dofs_per_cell << std::endl; //"  lexicographic p: " << lexicographic_p << std::endl;  
             for (unsigned int j = 0; j < fe_p->dofs_per_cell - 1; ++j)
               {
                 const Point<dim> p = fe_p->get_unit_support_points()[lexicographic_p[j]];
-                for (unsigned int i = 0; i < fe_mine.dofs_per_cell; ++i)
+                for (unsigned int i = 0; i < fe_mine.dofs_per_cell; ++i){
                   interpolation_concentration_pressure(j, i) =
                     this->fe->shape_value(lexicographic_ls[i], p);
+                  this->pcout << "IP(" <<j <<","<< i <<") = " << interpolation_concentration_pressure(j,i) << std::endl; 
+                }
               }
           }
       }
