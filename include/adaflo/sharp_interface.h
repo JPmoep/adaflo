@@ -990,7 +990,8 @@ private:
     else if (!use_auxiliary_surface_mesh && use_sharp_interface)
     // level set
       compute_force_vector_sharp_interface(
-                                          QGauss<dim - 1>(2 /*TODO*/),
+                                          //QGaussLobatto<1>(navier_stokes_solver.get_parameters().velocity_degree + 1),
+                                          QGauss<dim - 1>(navier_stokes_solver.get_parameters().velocity_degree + 1 /*TODO*/),
                                           navier_stokes_solver.mapping,
                                           level_set_solver.get_dof_handler(),
                                           navier_stokes_solver.get_dof_handler_u(),

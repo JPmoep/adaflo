@@ -380,9 +380,10 @@ LevelSetOKZSolver<dim>::local_compute_force(
               this->pcout << "i = " << i << "projected val  = " << projected_value  << std::endl;
               pre_values.submit_dof_value(projected_value, i);
             }
-          pre_values.evaluate(false, true);
+          //TODO: change bach vlaues true to false
+          pre_values.evaluate(true, true);
           //TODO: remove
-          ls_values.evaluate(false, true);
+          ls_values.evaluate(true, true);
         }
       else
         ls_values.evaluate(false, true);
@@ -391,8 +392,8 @@ LevelSetOKZSolver<dim>::local_compute_force(
       curv_values.read_dof_values_plain(this->solution.block(1));
       curv_values.evaluate(true, false);
       
-      this->pcout << "n_q_points = " << n_q_points << "  curv values nq points = " << curv_values.n_q_points <<"  " <<VectorizedArray<double>::size() << std::endl;
-      
+      //this->pcout << "pre val n_q_points = " << pre_values.n_q_points << "  n q points = " << n_q_points << std::endl;
+      //this->pcout << "dof info pre val:  " << pre_values.get_dof_info() << std::endl;
       
       // evaluate surface tension force and gravity force
       for (unsigned int q = 0; q < curv_values.n_q_points; ++q)
@@ -404,16 +405,22 @@ LevelSetOKZSolver<dim>::local_compute_force(
                pre_values.get_gradient(q) :
                ls_values.get_gradient(q));
 
-          // surface tension without interpolation for comparison
+          /*// surface tension without interpolation for comparison
           //TODO: remove!
           Tensor<1, dim, vector_t> force_no_in =
             (this->parameters.surface_tension * curv_values.get_value(q)) *
                ls_values.get_gradient(q);
-
-          this->pcout << "force = " << force << std::endl;
-          this->pcout << "force no interpolation = " << force_no_in << std::endl;
-          this->pcout << "q = " << q << "   pre val grad = " << pre_values.get_gradient(q) 
-              << " ls val grad = " << ls_values.get_gradient(q) << std::endl;
+          */
+          //this->pcout << "force = " << force << std::endl;
+          //this->pcout << "force no interpolation = " << force_no_in << std::endl;
+          this->pcout << "q = " << q <<" :"<< std::endl;
+         // this->pcout <<"q point ls = " << ls_values.quadrature_point(q) << " q point pre = " << pre_values.quadrature_point(q) << std::endl;
+          if( q <pre_values.dofs_per_cell){
+            this->pcout << "pre val dof = " << pre_values.get_dof_value(q) << std::endl;
+            this->pcout << "ls val dof = " << ls_values.get_dof_value(q) << std::endl;
+           }
+          this->pcout << "pre val  = " << pre_values.get_value(q) << "  pre val grad = " << pre_values.get_gradient(q)<<std::endl;
+          this->pcout << "ls val = " << ls_values.get_value(q) << "   ls val grad = " << ls_values.get_gradient(q) <<std::endl;
 
           // gravity
           vector_t actual_rho =

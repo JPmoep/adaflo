@@ -26,7 +26,7 @@ subsection Two phase
   set surface tension      = 0.0245
   set epsilon              = 1.5
   set gravity              = 0.98
-  set concentration subdivisions = 3
+  set concentration subdivisions = 4
   set grad pressure compatible = 0
   set localize surface tension = 0
   set curvature correction = 1
@@ -40,9 +40,9 @@ subsection Time stepping
 end
 subsection Navier-Stokes
   set dimension            = 2
-  set global refinements   = 4
+  set global refinements   = 2
   set adaptive refinements = 0
-  set velocity degree      = 4
+  set velocity degree      = 2
   subsection Solver
     set NL max iterations            = 10
     set NL tolerance                 = 1.e-9
