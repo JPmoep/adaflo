@@ -1000,6 +1000,7 @@ compute_force_vector_sharp_interface(const Quadrature<dim - 1> &surface_quad,
   std::vector<double>                  buffer_2;
   std::vector<double>                  buffer_dim;
   std::vector<types::global_dof_index> local_dof_indices;
+       
 
   //interpolation to pressure space
   FullMatrix<double> interpolation_concentration_pressure(navier_stokes_getfep.n_dofs_per_cell(), dof_handler.get_fe().n_dofs_per_cell());
@@ -1026,7 +1027,6 @@ compute_force_vector_sharp_interface(const Quadrature<dim - 1> &surface_quad,
                 pcout << "IP(" <<j <<","<< i <<") = " << interpolation_concentration_pressure(j,i) << std::endl; 
               }
             }
-           //pcout << "ndof dof handler dim = " << dof_handler_dim.get_fe().n_dofs_per_cell() << " and ndof dof handler = " << dof_handler.get_fe().n_dofs_per_cell() << std::endl;
         }
       else if (const FE_Q_DG0<dim> *fe_p =
                   dynamic_cast<const FE_Q_DG0<dim> *>(&navier_stokes_getfep))
@@ -1168,9 +1168,9 @@ compute_force_vector_sharp_interface(const Quadrature<dim - 1> &surface_quad,
       // interpolate ls values onto pressure (from level_set_okz.cc)
       if (params.interpolate_grad_onto_pressure)
         {
-         //pcout << "\n   ns dofs:" << navier_stokes_getfep.n_dofs_per_cell() << " cell ndofs: " << cell->get_fe().n_dofs_per_cell() << std::endl;
-         //pcout << "\n  dof handler_n_dofs: " << dof_handler.get_fe().n_dofs_per_cell() << "  dof handler dim ndofs: " << dof_handler_dim.get_fe().n_dofs_per_cell() << std::endl;
-          
+          pcout << "\n  ns dofs:" << navier_stokes_getfep.n_dofs_per_cell() << " cell ndofs: " << cell->get_fe().n_dofs_per_cell() << std::endl;
+          pcout << "  dof handler_n_dofs: " << dof_handler.get_fe().n_dofs_per_cell() << "  dof handler dim ndofs: " << dof_handler_dim.get_fe().n_dofs_per_cell() << std::endl;
+
           for (unsigned int i = 0; i < navier_stokes_getfep.n_dofs_per_cell(); ++i)
           //for (unsigned int i = 0; i < dof_handler.get_fe().n_dofs_per_cell(); ++i)
             {
@@ -1195,17 +1195,18 @@ compute_force_vector_sharp_interface(const Quadrature<dim - 1> &surface_quad,
         else{
          // pre_val.evaluate(cell, unit_points, make_array_view(buffer_2), EvaluationFlags::gradients);
         }
-        pcout << "n_points = " << n_points << std::endl;
+        pcout << "\n n_points = " << n_points << std::endl;
       
       // quadrature loop
       for (unsigned int q = 0; q < n_points; ++q)
         {
           Assert(phi_normal.get_value(q).norm() > 0, ExcNotImplemented());
           if(params.interpolate_grad_onto_pressure){
+            pcout << " q = "<< q << ":" << std::endl;
             if(q < navier_stokes_getfep.n_dofs_per_cell()){
-              pcout << "pre_val = " << pre_val.get_value(q) << "  buffer_1 = " << buffer_1[q] << std::endl;
-              pcout << "phi_val = " << phi_val.get_value(q) << "  buffer_2 = " << buffer_2[q] << std::endl;
+              pcout  << "pre_val = " << pre_val.get_value(q) << "  buffer_1 = " << buffer_1[q] << std::endl;
             }
+            pcout << "phi_val = " << phi_val.get_value(q) << "  buffer_2 = " << buffer_2[q] << std::endl;
             pcout << "phi normal values = " << phi_normal.get_value(q) << "  phi normal norm =  " << phi_normal.get_value(q).norm() << std::endl;
             pcout << "pre val grad = " << pre_val.get_gradient(q) << "  pre val grad norm =  " << pre_val.get_gradient(q).norm() << std::endl;
             pcout << "phi val grad = " << phi_val.get_gradient(q) << std::endl;

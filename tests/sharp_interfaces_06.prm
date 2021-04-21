@@ -26,7 +26,7 @@ subsection Two phase
   set surface tension      = 1.0
   set epsilon              = 1.5
   set gravity              = 0.
-  set concentration subdivisions = 1
+  set concentration subdivisions = 3
   set grad pressure compatible = 1
   set localize surface tension = 0
   set curvature correction = 1
