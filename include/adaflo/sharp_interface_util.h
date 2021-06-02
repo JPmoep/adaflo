@@ -363,7 +363,6 @@ namespace dealii
                         //const auto phi_old = phi;
                       }else{
                         std::cout << "else" << std::endl;
-                        }
                       }
                       //TODO: moved point outside of box? boundary points?
                       // check if point is outside domain and if so then project it back to the
