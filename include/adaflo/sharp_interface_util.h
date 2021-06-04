@@ -82,8 +82,8 @@ namespace dealii
       std::vector<types::global_dof_index> temp_dof_indices;
       
       //for RK4 method
-      Vector<double>                     velocity_half_dt, velocity_half_dt_x_old;
-      Vector<double>                     pos_old, pos_old_old;
+      Vector<double>                     velocity_half_dt, velocity_half_dt_x_old, velocity_dt, velocity_dt_x_old;
+      Vector<double>                     pos_old;
       double                             K1, K2, K3, K4;
 
       auto euler_coordinates_vector_temp = euler_coordinates_vector;
@@ -150,16 +150,16 @@ namespace dealii
 
           temp.reinit(fe_eval.dofs_per_cell);
           pos_old.reinit(fe_eval.dofs_per_cell);
-          pos_old_old.reinit(fe_eval.dofs_per_cell);
           velocity_half_dt.reinit(fe_eval.dofs_per_cell);
           velocity_half_dt_x_old.reinit(fe_eval.dofs_per_cell);
+          velocity_dt.reinit(fe_eval.dofs_per_cell);
+          velocity_dt_x_old.reinit(fe_eval.dofs_per_cell);
 
           temp_dof_indices.resize(fe_eval.dofs_per_cell);
 
           cell->get_dof_indices(temp_dof_indices);
           cell->get_dof_values(euler_coordinates_vector, temp);
           cell->get_dof_values(euler_coordinates_vector_old, pos_old);
-          //cell->get_dof_values(euler_coordinates_vector_old_old, pos_old_old);
 
           for (const auto q : fe_eval.quadrature_point_indices())
             {
@@ -174,29 +174,38 @@ namespace dealii
                     euler_dofhandler.get_fe().component_to_system_index(comp, q);
                
                 //TODO: Implement RK4 method to get new postition
-                  K1 = velocity_t_old[comp];
-                  // v(t_i+dt, x_i) = 1/2*(v(t_i,x_i)+v(t_i-1,x_i))
-                  velocity_half_dt[i] = 0.5*(velocity_t_old[comp] + velocity[comp]);
-                  // v(t_i+dt, x_i-1) = 1/2*(v(t_i,x_i-1)+v(t_i-1,x_i-1))
-                  velocity_half_dt_x_old[i] = 0.5*(velocity_t_old_x_old[comp] + velocity_x_old[comp]);
-                  
+                /* help velocities for extrapolation for K's */
+                  // v(t_i+dt, x_i) = v(t_i,x_i) + 1/2*(v(t_i,x_i) - v(t_i-1,x_i))
+                  velocity_half_dt[i] = velocity[comp] + 0.5*(velocity[comp] - velocity_t_old[comp]);
+                  // v(t_i+dt, x_i-1) = v(t_i,x_i-1) + 1/2*(v(t_i,x_i-1) - v(t_i-1,x_i-1))
+                  velocity_half_dt_x_old[i] = velocity_x_old[comp] + 0.5*(velocity_x_old[comp] - velocity_t_old_x_old[comp]);
+                  // v(t_i+1, x_i) = 2*v(t_i,x_i) - v(t_i-1,x_i))
+                  velocity_dt[i] = 2*velocity[comp] - velocity_t_old[comp];
+                  // v(t_i+1, x_i-1) = 2*v(t_i,x_i-1)  - v(t_i-1,x_i-1)
+                  velocity_dt_x_old[i] = 2*velocity_x_old[comp] - velocity_t_old_x_old[comp];
+
                   std::cout << "comp = " << comp << "   i = " << i << std::endl;
                   std::cout << "velocity old = " << velocity_t_old[comp] << " and velocity = " << velocity[comp]
                             << " and velo t&x old = " << velocity_t_old_x_old[comp] << " and velo x old = " << velocity_x_old[comp]<< std::endl;
                   std::cout << "velocity half = " << velocity_half_dt[i] << " and velocity half old = " << velocity_half_dt_x_old[i] << std::endl;
-                  std::cout << "temp  = " << temp[i] << "  and pos old = " << pos_old[i]<< " and pos old old = " << pos_old_old[i] << std::endl;
+                  std::cout << "temp  = " << temp[i] << "  and pos old = " << pos_old[i]<< std::endl;
                   
+                  // K1 = v(t_i, x_i)
+                  K1 = velocity[comp];
+
                   // if x_i-1 = x_i
                   if(pos_old[i] == fe_eval.quadrature_point(q)[comp])
                   {
                     K2 = velocity_half_dt[i];
                     K3 = velocity_half_dt[i];
-                    K4 = velocity[comp];
+                    K4 = velocity_dt[comp];
                   }else{
-                    // fe_eval.quadrature_point(q)[comp]== temp[i]???!
-                    K2 = velocity_half_dt[i] + (velocity_half_dt[i] - velocity_half_dt_x_old[i])/(fe_eval.quadrature_point(q)[comp] - pos_old[i]) * (fe_eval.quadrature_point(q)[comp] + dt/2*K1 - pos_old[i]);
-                    K3 = velocity_half_dt[i] + (velocity_half_dt[i] - velocity_half_dt_x_old[i])/(fe_eval.quadrature_point(q)[comp] - pos_old[i]) * (fe_eval.quadrature_point(q)[comp] + dt/2*K2 - pos_old[i]);
-                    K4 = velocity[comp] + (velocity[comp] - velocity_x_old[comp])/(fe_eval.quadrature_point(q)[comp] - pos_old[i]) * (fe_eval.quadrature_point(q)[comp] + dt*K3 - pos_old[i]);
+                    // K2 = v(t_i + dt/2, x_i + dt/2*K1)
+                    K2 = velocity_half_dt[i] + (velocity_half_dt[i] - velocity_half_dt_x_old[i])/(fe_eval.quadrature_point(q)[comp] - pos_old[i]) *  dt/2*K1;
+                    // K3 = v(t_i + dt/2, x_i + dt/2*K2)
+                    K3 = velocity_half_dt[i] + (velocity_half_dt[i] - velocity_half_dt_x_old[i])/(fe_eval.quadrature_point(q)[comp] - pos_old[i]) *  dt/2*K2;
+                    // K4 = v(t_i + dt, x_i + dt*K3)
+                    K4 = velocity_dt[comp] + (velocity_dt[comp] - velocity_dt_x_old[comp])/(fe_eval.quadrature_point(q)[comp] - pos_old[i]) *  dt*K3 ;
                   }
                   
                   temp[i] = fe_eval.quadrature_point(q)[comp] + dt/6*(K1 + 2*K2 + 2*K3 + K4);
