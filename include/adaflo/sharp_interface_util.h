@@ -112,6 +112,7 @@ namespace dealii
       
 
       Utilities::MPI::RemotePointEvaluation<spacedim, spacedim> cache;
+      cache.reinit(evaluation_points, background_dofhandler.get_triangulation(), background_mapping);
 
       const auto evaluation_values =
         VectorTools::point_values<spacedim>(background_mapping,
@@ -226,6 +227,7 @@ namespace dealii
                            const VectorType &                    velocity_vector,
                            const VectorType &                    levelset_vector,
                            const BlockVectorType &               normal_vector,
+                           const double &                        eps_used,
                            const DoFHandler<dim, spacedim> &     euler_dofhandler,
                            const Mapping<dim, spacedim> &        euler_mapping,
                            VectorType &                          euler_coordinates_vector)
@@ -242,14 +244,10 @@ namespace dealii
 
       auto euler_coordinates_vector_temp = euler_coordinates_vector;
 
-      // velocity_vector.update_ghost_values();
       levelset_vector.update_ghost_values();
       normal_vector.update_ghost_values();
 
-      
-
-      // iteration of prolongation
-      for (int j = 0; j < 1; j++)
+      for (int j = 0; j < 3 /*TODO: make parameter*/; ++j)
         {
           std::vector<Point<spacedim>> evaluation_points;
           for (const auto &cell : euler_dofhandler.active_cell_iterators())
@@ -261,46 +259,21 @@ namespace dealii
             }
 
           Utilities::MPI::RemotePointEvaluation<spacedim, spacedim> cache;
+          
+          cache.reinit(evaluation_points, background_dofhandler.get_triangulation(), background_mapping);
 
-         /* const auto evaluation_values =
-            VectorTools::point_values<spacedim>(background_mapping,
-                                                      background_dofhandler_dim,
-                                                      velocity_vector,
-                                                      evaluation_points,
-                                                      cache);
-          */
           const auto evaluation_values_ls = 
-            VectorTools::point_values<spacedim>(background_mapping,
-                                                      background_dofhandler,
-                                                      levelset_vector,
-                                                      evaluation_points,
-                                                      cache);
+            VectorTools::point_values<1>(cache,
+                                         background_dofhandler,
+                                         levelset_vector);
         
-          /*std::vector<typename FEPointEvaluation<n_components, dim>::value_type> evaluation_values_normal_dim;
-          for(int i=0; i<spacedim; i++)
-          {  
-            evaluation_values_normal_dim[i] =
-              VectorTools::point_values<spacedim>(background_mapping,
-                                                        background_dofhandler,
-                                                        normal_vector.block(i),
-                                                        evaluation_points,
-                                                        cache);
-            // evaluation_values_normal_dim[i] = evaluation_values_normal;
-          }
-          */ 
-          // TODO: do better!
-          const auto evaluation_values_normal_dim_0 =
-            VectorTools::point_values<spacedim>(background_mapping,
-                                                      background_dofhandler,
-                                                      normal_vector.block(0),
-                                                      evaluation_points,
-                                                      cache);
-          const auto evaluation_values_normal_dim_1 =
-            VectorTools::point_values<spacedim>(background_mapping,
-                                                      background_dofhandler,
-                                                      normal_vector.block(1),
-                                                      evaluation_points,
-                                                      cache);
+          std::array<std::vector<double>, spacedim> evaluation_values_normal;
+          
+          for (unsigned int comp = 0; comp < spacedim; ++comp)
+            evaluation_values_normal[comp] =
+            VectorTools::point_values<1>(cache,
+                                         background_dofhandler,
+                                         normal_vector.block(comp));
         
           unsigned int counter = 0;
 
@@ -318,62 +291,29 @@ namespace dealii
 
               for (const auto q : fe_eval.quadrature_point_indices())
                 {
-                  //const auto velocity = evaluation_values[counter];
                   const auto phi = evaluation_values_ls[counter];
-                  const auto normal_0 = evaluation_values_normal_dim_0[counter];
-                  const auto normal_1 = evaluation_values_normal_dim_1[counter];
-                  // normalize normal vector
-                  auto normal_normalized_0 = normal_0[q];
-                  auto normal_normalized_1 = normal_1[q];
-                  if(normal_0[q] != 0 && normal_1[q] != 0)
-                  {
-                    normal_normalized_0 = normal_0[q]/(std::sqrt(normal_0[q]*normal_0[q] + normal_1[q]*normal_1[q]));
-                    normal_normalized_1 = normal_1[q]/(std::sqrt(normal_0[q]*normal_0[q] + normal_1[q]*normal_1[q]));
-                  }
+                  
+                  Point<spacedim> normal;
                   
                   for (unsigned int comp = 0; comp < spacedim; ++comp)
-                    {
-                      //normal[comp] = evaluation_values_normal_dim[comp][counter++];
-                      const auto i =
-                        euler_dofhandler.get_fe().component_to_system_index(comp, q);
-                      //TODO: modify condition??  
-                      if(phi[q] < 1.0 && phi[q] > -1.0)
-                      {
-                        //std::cout  << "comp = " << comp << "     q = "<< q << "     i = " << i << ":" << std::endl;
-                        /*std::cout << "temp = " << temp[i] << " phi = " << phi[q] << "   normal_0 = " << normal_0[q]
-                          << "  normalized 0 = " << normal_normalized_0 << "  normal_1 = " << normal_1[q]
-                          << "  normalized 1 = " << normal_normalized_1 << std::endl;
-                        */
+                    normal[comp] = evaluation_values_normal[comp][counter];
+                  
+                  if(normal.norm() > 1e-10)
+                      normal/=normal.norm();
 
-                        if(comp == 0){
-                          temp[i] = fe_eval.quadrature_point(q)[comp]  - 0.01* normal_normalized_0 * phi[q];
-                        }else if(comp == 1){
-                          temp[i] = fe_eval.quadrature_point(q)[comp]  - 0.01* normal_normalized_1 * phi[q];
-                        }else{
-                          std::cout << "I do not understand!" << std::endl;
-                        }
-                        if (phi[q]==0){
-                          std::cout.precision(8);
-                        std::cout  << "comp = " << comp << "     q = "<< q << "     i = " << i << ":" << std::endl;
-                        std::cout << "x before = " << fe_eval.quadrature_point(q)[comp]<< "   x after = " << temp[i] << std::endl;
-                        std::cout << " phi = " << phi[q] << "     normal 0 = " 
-                                  << normal_normalized_0 << "  normal_1 = " << normal_normalized_1 << std::endl;
-                        }
-                        //TODO: save old ls_value to decide if another iteration is necessary by sign comparing?
-                        //const auto phi_old = phi;
-                      }else{
-                        std::cout << "else" << std::endl;
-                      }
-                      //TODO: moved point outside of box? boundary points?
-                      // check if point is outside domain and if so then project it back to the
-                      // domain
-                     /* if (temp[i] < boundary_points.first[comp])
-                        temp[i] = boundary_points.first[comp];
-                      else if (temp[i] > boundary_points.second[compd])
-                        temp[i] = boundary_points.second[comp];
-                      */
-                    }
-                    counter = counter +1 ;
+                  //if(phi[q] < 1.0 && phi[q] > -1.0)
+                  for (unsigned int comp = 0; comp < spacedim; ++comp)
+                  {
+                    temp[euler_dofhandler.get_fe().component_to_system_index(comp, q)] = 
+                            fe_eval.quadrature_point(q)[comp]  - 2 * eps_used* normal[comp] * phi;
+                    std::cout.precision(8);
+                    std::cout << "comp = "<< comp << " : " << std::endl;
+                    std::cout << "x_neu  = " << temp[euler_dofhandler.get_fe().component_to_system_index(comp, q)] 
+                              << "    x_alt = " << fe_eval.quadrature_point(q)[comp] 
+                              << " phi = " << phi << "  normal = " << normal[comp] << std::endl;
+                  }
+                  std::cout << "eps = " << eps_used << std::endl;
+                  counter++;
                 }
                 
               cell->set_dof_values(temp, euler_coordinates_vector_temp);
@@ -1024,6 +964,9 @@ compute_force_vector_sharp_interface(const Triangulation<dim, spacedim> &surface
         // perform operation at quadrature points
         for (unsigned int q = 0; q < unit_points.size(); ++q)
           {
+            std::cout <<"q = " << q << "    phi_normal norm = " << phi_normal.get_value(q).norm() 
+                      << "  normal_0 = "<< phi_normal.get_value(q)[0] << "  normal_1 = " 
+                      << phi_normal.get_value(q)[1] <<std::endl;
             Assert(phi_normal.get_value(q).norm() > 0, ExcNotImplemented());
             const auto normal = phi_normal.get_value(q) / phi_normal.get_value(q).norm();
             phi_force.submit_value(surface_tension * normal *

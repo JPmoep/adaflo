@@ -385,11 +385,17 @@ public:
     return curvature_solution;
   }
 
-   const double  &
+  const double  &
    get_min_edge_length()
    {
      return minimal_edge_length;
-   }       
+   }    
+
+   const double  &
+   get_eps_used()
+   {
+     return epsilon_used;
+   }     
 
   const DoFHandler<dim> &
   get_dof_handler() const
@@ -1427,6 +1433,7 @@ private:
                                         navier_stokes_solver.solution.block(0),
                                         level_set_solver.get_level_set_vector(),
                                         level_set_solver.get_normal_vector(),
+                                        level_set_solver.get_eps_used(),
                                         euler_dofhandler,
                                         *euler_mapping,
                                         euler_vector);   
