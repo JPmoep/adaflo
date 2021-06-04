@@ -292,6 +292,9 @@ namespace dealii
               for (const auto q : fe_eval.quadrature_point_indices())
                 {
                   const auto phi = evaluation_values_ls[counter];
+                  double distance = (1 - phi * phi) > 1e-2 ?
+                        eps_used * std::log((1. + phi) / (1. - phi)) :
+                         0;
                   
                   Point<spacedim> normal;
                   
@@ -305,14 +308,14 @@ namespace dealii
                   for (unsigned int comp = 0; comp < spacedim; ++comp)
                   {
                     temp[euler_dofhandler.get_fe().component_to_system_index(comp, q)] = 
-                            fe_eval.quadrature_point(q)[comp]  - 2 * eps_used* normal[comp] * phi;
-                    std::cout.precision(8);
+                            fe_eval.quadrature_point(q)[comp]  - normal[comp] * distance;
+                    /*std::cout.precision(8);
                     std::cout << "comp = "<< comp << " : " << std::endl;
                     std::cout << "x_neu  = " << temp[euler_dofhandler.get_fe().component_to_system_index(comp, q)] 
                               << "    x_alt = " << fe_eval.quadrature_point(q)[comp] 
                               << " phi = " << phi << "  normal = " << normal[comp] << std::endl;
+                              */
                   }
-                  std::cout << "eps = " << eps_used << std::endl;
                   counter++;
                 }
                 
@@ -964,9 +967,10 @@ compute_force_vector_sharp_interface(const Triangulation<dim, spacedim> &surface
         // perform operation at quadrature points
         for (unsigned int q = 0; q < unit_points.size(); ++q)
           {
-            std::cout <<"q = " << q << "    phi_normal norm = " << phi_normal.get_value(q).norm() 
+            /*std::cout <<"q = " << q << "    phi_normal norm = " << phi_normal.get_value(q).norm() 
                       << "  normal_0 = "<< phi_normal.get_value(q)[0] << "  normal_1 = " 
                       << phi_normal.get_value(q)[1] <<std::endl;
+                      */
             Assert(phi_normal.get_value(q).norm() > 0, ExcNotImplemented());
             const auto normal = phi_normal.get_value(q) / phi_normal.get_value(q).norm();
             phi_force.submit_value(surface_tension * normal *
