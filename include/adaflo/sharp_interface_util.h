@@ -71,10 +71,10 @@ namespace dealii
       std::vector<types::global_dof_index> temp_dof_indices;
       
       //for RK4 method
-      double                             temp_K2, temp_K3, temp_K4;
+      std::vector<double>                temp_K2, temp_K3, temp_K4, buffer;
       double                             K1, K2, K3, K4;
       //TODO: cache??
-      //?? evaluation_func;
+      const std::function< void(const ArrayView< const T > &, const CellData &)>  evaluation_func;
 
       auto euler_coordinates_vector_temp = euler_coordinates_vector;
 
@@ -109,6 +109,11 @@ namespace dealii
 
           temp.reinit(fe_eval.dofs_per_cell);
           temp_dof_indices.resize(fe_eval.dofs_per_cell);
+          
+          temp_K2.resize(fe_eval.dofs_per_cell);
+          temp_K3.resize(fe_eval.dofs_per_cell);
+          temp_K4.resize(fe_eval.dofs_per_cell);
+          buffer.resize(fe_eval.dofs_per_cell);
 
           cell->get_dof_indices(temp_dof_indices);
           cell->get_dof_values(euler_coordinates_vector, temp);
@@ -125,15 +130,15 @@ namespace dealii
                   // K1 = v(t_i, x_i)
                   K1 = velocity[comp];
                   // K2 = v(t_i + dt/2, x_i + dt/2*K1)
-                  temp_K2 = fe_eval.quadrature_point(q)[comp] +  dt/2*K1;
+                  temp_K2[i] = fe_eval.quadrature_point(q)[comp] +  dt/2*K1;
                   Utilities::MPI::RemotePointEvaluation< spacedim, spacedim >::process_and_evaluate(temp_K2, buffer, evaluation_func);
                   K2 = evaluation_func;
                   // K3 = v(t_i + dt/2, x_i + dt/2*K2)
-                  temp_K3 = fe_eval.quadrature_point(q)[comp] +  dt/2*K2;
+                  temp_K3[i] = fe_eval.quadrature_point(q)[comp] +  dt/2*K2;
                   Utilities::MPI::RemotePointEvaluation< spacedim, spacedim >::process_and_evaluate(temp_K3, buffer, evaluation_func);
                   K3 = evaluation_func;
                   // K4 = v(t_i + dt, x_i + dt*K3)
-                  temp_K4 = fe_eval.quadrature_point(q)[comp] +  dt*K3;
+                  temp_K4[i] = fe_eval.quadrature_point(q)[comp] +  dt*K3;
                   Utilities::MPI::RemotePointEvaluation< spacedim, spacedim >::process_and_evaluate(temp_K4, buffer, evaluation_func);
                   K4 = evaluation_func;
                   
