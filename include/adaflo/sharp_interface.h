@@ -559,13 +559,9 @@ public:
     surface_coordinates_vector.zero_out_ghost_values();
 
     auto surface_coordinates_vector_old = surface_coordinates_vector;
-    auto surface_coordinates_vector_old_old = surface_coordinates_vector_old;
 
     euler_mapping = std::make_shared<MappingFEField<dim - 1, dim, VectorType>>(
       surface_dofhandler_dim, surface_coordinates_vector);
-    
-    euler_mapping_old = std::make_shared<MappingFEField<dim - 1, dim, VectorType>>(
-      surface_dofhandler_dim, surface_coordinates_vector_old);
 
     this->update_phases();
     this->update_gravity_force();
@@ -672,26 +668,14 @@ private:
   void
   move_surface_mesh()
   {
-   /* VectorTools::update_position_vector(navier_stokes_solver.time_stepping.step_size(),
+    VectorTools::update_position_vector(navier_stokes_solver.time_stepping.step_size(),
                                         navier_stokes_solver.get_dof_handler_u(),
                                         navier_stokes_solver.mapping,
                                         navier_stokes_solver.solution.block(0),
                                         surface_dofhandler_dim,
                                         *euler_mapping,
                                         surface_coordinates_vector);
-*/
-    VectorTools::update_position_vector(navier_stokes_solver.time_stepping.step_size(),
-                                        navier_stokes_solver.get_dof_handler_u(),
-                                        navier_stokes_solver.mapping,
-                                        navier_stokes_solver.solution.block(0),
-                                        navier_stokes_solver.solution_old.block(0),
-                                        navier_stokes_solver.solution_old_old.block(0),
-                                        surface_dofhandler_dim,
-                                        *euler_mapping,
-                                        *euler_mapping_old,
-                                        surface_coordinates_vector,
-                                        surface_coordinates_vector_old,
-                                        surface_coordinates_vector_old_old);
+
   }
 
   void
@@ -750,7 +734,7 @@ private:
                       normal_vector,
                       curvature_vector);
 
-    compute_force_vector_sharp_interface(
+    compute_force_vector_sharp_interface_lagrange(
       *euler_mapping,
       surface_dofhandler,
       surface_dofhandler_dim,
@@ -809,10 +793,7 @@ private:
   DoFHandler<dim - 1, dim>               surface_dofhandler_dim;
   DoFHandler<dim - 1, dim>               surface_dofhandler;
   VectorType                             surface_coordinates_vector;
-  VectorType                             surface_coordinates_vector_old;
-  VectorType                             surface_coordinates_vector_old_old;
   std::shared_ptr<Mapping<dim - 1, dim>> euler_mapping;
-  std::shared_ptr<Mapping<dim - 1, dim>> euler_mapping_old;
 
   VectorType normal_vector;
   VectorType curvature_vector;
@@ -842,39 +823,26 @@ public:
                        navier_stokes_solver.boundary->fluid_type,
                        navier_stokes_solver.boundary->symmetry)
     , euler_dofhandler(surface_mesh)
+    , euler_dofhandler_dim(surface_mesh)
   {
     // Degree for FE at surface mesh
     const unsigned int fe_degree = 1;
 
     FESystem<dim - 1, dim> surface_fe_dim(FE_Q<dim - 1, dim>(fe_degree), dim);
-    euler_dofhandler.distribute_dofs(surface_fe_dim);
+    euler_dofhandler_dim.distribute_dofs(surface_fe_dim);
 
-    euler_vector.reinit(euler_dofhandler.n_dofs());
-    //TODO: necessary?
-    euler_vector_old.reinit(euler_dofhandler.n_dofs());
-    euler_vector_old_old.reinit(euler_dofhandler.n_dofs());
+    euler_dofhandler.distribute_dofs(FE_Q<dim - 1, dim>(fe_degree));
 
+    euler_vector.reinit(euler_dofhandler_dim.n_dofs());
+   
     euler_vector.update_ghost_values();
-    //TODO: necessary?
-    euler_vector_old.update_ghost_values();
-    euler_vector_old_old.update_ghost_values();
 
     VectorTools::
-      get_position_vector(MappingQGeneric<dim - 1, dim>(4 /*TODO: this is a high number to well represent curved surfaces, the actual value is not that relevant*/), euler_dofhandler, euler_vector);
+      get_position_vector(MappingQGeneric<dim - 1, dim>(4 /*TODO: this is a high number to well represent curved surfaces, the actual value is not that relevant*/), euler_dofhandler_dim, euler_vector);
     euler_vector.zero_out_ghost_values();
     euler_mapping =
-      std::make_shared<MappingFEField<dim - 1, dim, VectorType>>(euler_dofhandler,
+      std::make_shared<MappingFEField<dim - 1, dim, VectorType>>(euler_dofhandler_dim,
                                                                  euler_vector);
-    VectorTools::
-      get_position_vector(MappingQGeneric<dim - 1, dim>(4 /*TODO: this is a high number to well represent curved surfaces, the actual value is not that relevant*/), euler_dofhandler, euler_vector_old);
-    euler_vector_old.zero_out_ghost_values();
-
-    euler_mapping_old =
-      std::make_shared<MappingFEField<dim - 1, dim, VectorType>>(euler_dofhandler,
-                                                                 euler_vector_old);
-
-    auto euler_vector_old = euler_vector;
-    auto euler_vector_old_old = euler_vector_old;
 
     // initialize
     this->update_phases();
@@ -993,11 +961,11 @@ public:
 
         DataOut<dim - 1, dim> data_out;
         data_out.set_flags(flags);
-        data_out.attach_dof_handler(euler_dofhandler);
+        data_out.attach_dof_handler(euler_dofhandler_dim);
 
         data_out.build_patches(
           *euler_mapping,
-          euler_dofhandler.get_fe().degree + 1,
+          euler_dofhandler_dim.get_fe().degree + 1,
           DataOut<dim - 1, dim>::CurvedCellRegion::curved_inner_cells);
 
         std::filesystem::path path(output_filename + "_surface");
@@ -1413,30 +1381,13 @@ private:
   {
     Assert(use_auxiliary_surface_mesh, ExcNotImplemented());
 
-   /*VectorTools::update_position_vector(navier_stokes_solver.time_stepping.step_size(),
+   VectorTools::update_position_vector(navier_stokes_solver.time_stepping.step_size(),
                                         navier_stokes_solver.get_dof_handler_u(),
                                         navier_stokes_solver.mapping,
                                         navier_stokes_solver.solution.block(0),
-                                        navier_stokes_solver.solution_old.block(0),
-                                        navier_stokes_solver.solution_old_old.block(0),
-                                        euler_dofhandler,
+                                        euler_dofhandler_dim,
                                         *euler_mapping,
-                                        *euler_mapping_old,
-                                        euler_vector,
-                                        euler_vector_old,
-                                        euler_vector_old_old);
-    */
-    VectorTools::update_position_vector_level_set(navier_stokes_solver.time_stepping.step_size(),
-                                        level_set_solver.get_dof_handler(),
-                                        navier_stokes_solver.get_dof_handler_u(),
-                                        navier_stokes_solver.mapping,
-                                        navier_stokes_solver.solution.block(0),
-                                        level_set_solver.get_level_set_vector(),
-                                        level_set_solver.get_normal_vector(),
-                                        level_set_solver.get_eps_used(),
-                                        euler_dofhandler,
-                                        *euler_mapping,
-                                        euler_vector);   
+                                        euler_vector);
                                                                    
   }
 
@@ -1486,17 +1437,47 @@ private:
   {
     // mixed level set
     if (use_auxiliary_surface_mesh && use_sharp_interface)
-      compute_force_vector_sharp_interface(
-        euler_dofhandler.get_triangulation(),
+    {      
+      normal_l_vector.reinit(euler_dofhandler_dim.n_dofs());
+      curvature_l_vector.reinit(euler_dofhandler.n_dofs());
+
+      compute_normal(*euler_mapping, euler_dofhandler_dim, normal_l_vector);
+      compute_curvature(*euler_mapping,
+                        euler_dofhandler_dim,
+                        euler_dofhandler,
+                        QGaussLobatto<dim - 1>(euler_dofhandler.get_fe().degree + 1),
+                        normal_l_vector,
+                        curvature_l_vector);
+
+      compute_force_vector_sharp_interface_lagrange(
         *euler_mapping,
-        QGauss<dim - 1>(euler_dofhandler.get_fe().degree + 1),
+        euler_dofhandler,
+        euler_dofhandler_dim,
+        QGauss<dim - 1>(euler_dofhandler_dim.get_fe().degree + 1),
+        navier_stokes_solver.mapping,
+        navier_stokes_solver.get_dof_handler_u(),
+        navier_stokes_solver.get_parameters().surface_tension,
+        normal_l_vector,
+        curvature_l_vector,
+        surface_force_lagrange_vector);
+
+      compute_hybrid_force_vector_sharp_interface(
+        euler_dofhandler_dim.get_triangulation(),
+        *euler_mapping,
+        euler_dofhandler,
+        euler_dofhandler_dim,
+        QGauss<dim - 1>(euler_dofhandler_dim.get_fe().degree + 1),
         navier_stokes_solver.mapping,
         level_set_solver.get_dof_handler(),
         navier_stokes_solver.get_dof_handler_u(),
         navier_stokes_solver.get_parameters().surface_tension,
         level_set_solver.get_normal_vector(),
+        normal_l_vector,
         level_set_solver.get_curvature_vector(),
+        surface_force_lagrange_vector,
         navier_stokes_solver.user_rhs.block(0));
+
+    }
     else if (!use_auxiliary_surface_mesh && use_sharp_interface)
       compute_force_vector_sharp_interface(
         QGauss<dim - 1>(2 /*TODO*/),
@@ -1597,11 +1578,13 @@ private:
 
   // surface mesh
   DoFHandler<dim - 1, dim>               euler_dofhandler;
+  DoFHandler<dim - 1, dim>               euler_dofhandler_dim;
   VectorType                             euler_vector;
-  VectorType                             euler_vector_old;
-  VectorType                             euler_vector_old_old;
   std::shared_ptr<Mapping<dim - 1, dim>> euler_mapping;
-  std::shared_ptr<Mapping<dim - 1, dim>> euler_mapping_old;
+
+  VectorType                             normal_l_vector;
+  VectorType                             curvature_l_vector;
+  VectorType                             surface_force_lagrange_vector;
 };
 
 #endif

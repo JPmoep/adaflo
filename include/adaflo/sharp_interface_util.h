@@ -55,14 +55,9 @@ namespace dealii
                            const DoFHandler<spacedim, spacedim> &background_dofhandler,
                            const Mapping<spacedim, spacedim> &   background_mapping,
                            const VectorType &                    velocity_vector,
-                           const VectorType &                    velocity_vector_old,
-                           const VectorType &                    velocity_vector_old_old,
                            const DoFHandler<dim, spacedim> &     euler_dofhandler,
                            const Mapping<dim, spacedim> &        euler_mapping,
-                           const Mapping<dim, spacedim> &        euler_mapping_old,
-                           VectorType &                          euler_coordinates_vector,
-                           VectorType &                          euler_coordinates_vector_old,
-                           VectorType &                          euler_coordinates_vector_old_old)
+                           VectorType &                          euler_coordinates_vector)
     {
       FEValues<dim, spacedim> fe_eval(
         euler_mapping,
@@ -71,21 +66,10 @@ namespace dealii
           euler_dofhandler.get_fe().base_element(0).get_unit_support_points()),
         update_quadrature_points);
 
-      FEValues<dim, spacedim> fe_eval_old(
-        euler_mapping_old,
-        euler_dofhandler.get_fe(),
-        Quadrature<dim>(
-          euler_dofhandler.get_fe().base_element(0).get_unit_support_points()),
-        update_quadrature_points);
 
       Vector<double>                       temp;
       std::vector<types::global_dof_index> temp_dof_indices;
       
-      //for RK4 method
-      Vector<double>                     velocity_half_dt, velocity_half_dt_x_old, velocity_dt, velocity_dt_x_old;
-      Vector<double>                     pos_old;
-      double                             K1, K2, K3, K4;
-
       auto euler_coordinates_vector_temp = euler_coordinates_vector;
 
       velocity_vector.update_ghost_values();
@@ -99,19 +83,9 @@ namespace dealii
           for (const auto q : fe_eval.quadrature_point_indices())
             evaluation_points.push_back(fe_eval.quadrature_point(q));
         }
-
-
-      //TODO: fe_eval_old for surface mesh at old timestep???
-      for (const auto &cell : euler_dofhandler.active_cell_iterators())
-        {
-          fe_eval_old.reinit(cell);
-
-          for (const auto q : fe_eval_old.quadrature_point_indices())
-            evaluation_points_old.push_back(fe_eval.quadrature_point(q));
-        }
       
 
-      Utilities::MPI::RemotePointEvaluation<spacedim, spacedim> cache;
+      Utilities::MPI::RemotePointEvaluation<spacedim, spacedim> cache, cache_2;
       cache.reinit(evaluation_points, background_dofhandler.get_triangulation(), background_mapping);
 
       const auto evaluation_values =
@@ -120,27 +94,6 @@ namespace dealii
                                             velocity_vector,
                                             evaluation_points,
                                             cache);
-
-      const auto evaluation_values_t_old =
-        VectorTools::point_values<spacedim>(background_mapping,
-                                                  background_dofhandler,
-                                                  velocity_vector_old,
-                                                  evaluation_points,
-                                                  cache);
-
-      const auto evaluation_values_t_old_x_old =
-        VectorTools::point_values<spacedim>(background_mapping,
-                                                  background_dofhandler,
-                                                  velocity_vector_old,
-                                                  evaluation_points_old,
-                                                  cache);
-
-      const auto evaluation_values_x_old =
-        VectorTools::point_values<spacedim>(background_mapping,
-                                                  background_dofhandler,
-                                                  velocity_vector,
-                                                  evaluation_points_old,
-                                                  cache);   
       
       unsigned int counter = 0;
 
@@ -149,191 +102,28 @@ namespace dealii
           fe_eval.reinit(cell);
 
           temp.reinit(fe_eval.dofs_per_cell);
-          pos_old.reinit(fe_eval.dofs_per_cell);
-          velocity_half_dt.reinit(fe_eval.dofs_per_cell);
-          velocity_half_dt_x_old.reinit(fe_eval.dofs_per_cell);
-          velocity_dt.reinit(fe_eval.dofs_per_cell);
-          velocity_dt_x_old.reinit(fe_eval.dofs_per_cell);
-
           temp_dof_indices.resize(fe_eval.dofs_per_cell);
 
           cell->get_dof_indices(temp_dof_indices);
           cell->get_dof_values(euler_coordinates_vector, temp);
-          cell->get_dof_values(euler_coordinates_vector_old, pos_old);
-
+          
           for (const auto q : fe_eval.quadrature_point_indices())
             {
-              const auto velocity = evaluation_values[counter];
-              const auto velocity_t_old = evaluation_values_t_old[counter];
-              const auto velocity_t_old_x_old = evaluation_values_t_old_x_old[counter];
-              const auto velocity_x_old = evaluation_values_x_old[counter];
+              const auto velocity = evaluation_values[counter++];
 
               for (unsigned int comp = 0; comp < spacedim; ++comp)
                 {
                   const auto i =
                     euler_dofhandler.get_fe().component_to_system_index(comp, q);
-               
-                //TODO: Implement RK4 method to get new postition
-                /* help velocities for extrapolation for K's */
-                  // v(t_i+dt, x_i) = v(t_i,x_i) + 1/2*(v(t_i,x_i) - v(t_i-1,x_i))
-                  velocity_half_dt[i] = velocity[comp] + 0.5*(velocity[comp] - velocity_t_old[comp]);
-                  // v(t_i+dt, x_i-1) = v(t_i,x_i-1) + 1/2*(v(t_i,x_i-1) - v(t_i-1,x_i-1))
-                  velocity_half_dt_x_old[i] = velocity_x_old[comp] + 0.5*(velocity_x_old[comp] - velocity_t_old_x_old[comp]);
-                  // v(t_i+1, x_i) = 2*v(t_i,x_i) - v(t_i-1,x_i))
-                  velocity_dt[i] = 2*velocity[comp] - velocity_t_old[comp];
-                  // v(t_i+1, x_i-1) = 2*v(t_i,x_i-1)  - v(t_i-1,x_i-1)
-                  velocity_dt_x_old[i] = 2*velocity_x_old[comp] - velocity_t_old_x_old[comp];
-
-                  std::cout << "comp = " << comp << "   i = " << i << std::endl;
-                  std::cout << "velocity old = " << velocity_t_old[comp] << " and velocity = " << velocity[comp]
-                            << " and velo t&x old = " << velocity_t_old_x_old[comp] << " and velo x old = " << velocity_x_old[comp]<< std::endl;
-                  std::cout << "velocity half = " << velocity_half_dt[i] << " and velocity half old = " << velocity_half_dt_x_old[i] << std::endl;
-                  std::cout << "temp  = " << temp[i] << "  and pos old = " << pos_old[i]<< std::endl;
-                  
-                  // K1 = v(t_i, x_i)
-                  K1 = velocity[comp];
-
-                  // if x_i-1 = x_i
-                  if(pos_old[i] == fe_eval.quadrature_point(q)[comp])
-                  {
-                    K2 = velocity_half_dt[i];
-                    K3 = velocity_half_dt[i];
-                    K4 = velocity_dt[comp];
-                  }else{
-                    // K2 = v(t_i + dt/2, x_i + dt/2*K1)
-                    K2 = velocity_half_dt[i] + (velocity_half_dt[i] - velocity_half_dt_x_old[i])/(fe_eval.quadrature_point(q)[comp] - pos_old[i]) *  dt/2*K1;
-                    // K3 = v(t_i + dt/2, x_i + dt/2*K2)
-                    K3 = velocity_half_dt[i] + (velocity_half_dt[i] - velocity_half_dt_x_old[i])/(fe_eval.quadrature_point(q)[comp] - pos_old[i]) *  dt/2*K2;
-                    // K4 = v(t_i + dt, x_i + dt*K3)
-                    K4 = velocity_dt[comp] + (velocity_dt[comp] - velocity_dt_x_old[comp])/(fe_eval.quadrature_point(q)[comp] - pos_old[i]) *  dt*K3 ;
-                  }
-                  
-                  temp[i] = fe_eval.quadrature_point(q)[comp] + dt/6*(K1 + 2*K2 + 2*K3 + K4);
-                  std::cout << "i = " << i << ": quad pt = " << fe_eval.quadrature_point(q)[comp] << "  and temp = " << temp[i] << std::endl;
-                  std::cout << "k1 = " << K1 << " and K2 = " << K2 << " and K3 = " << K3 << " and K4 = " << K4 << "\n" << std::endl;
-                
-                // old variant: explicit Euler
-                // temp[i] = fe_eval.quadrature_point(q)[comp] + dt * velocity[comp];
+                    temp[i] = fe_eval.quadrature_point(q)[comp] + dt * velocity[comp];
                 }
             }
 
           cell->set_dof_values(temp, euler_coordinates_vector_temp);
-          counter = counter +1;
         }
-
-      //save position for RK4 time step in next cyle
-      //euler_coordinates_vector_old_old = euler_coordinates_vector_old;
-      euler_coordinates_vector_old = euler_coordinates_vector;
       euler_coordinates_vector = euler_coordinates_vector_temp;
     }
 
-    template <int dim, int spacedim, typename VectorType, typename BlockVectorType>
-    void
-    update_position_vector_level_set(const double                          dt,
-                           const DoFHandler<spacedim> &          background_dofhandler,
-                           const DoFHandler<spacedim, spacedim> &background_dofhandler_dim,
-                           const Mapping<spacedim, spacedim> &   background_mapping,
-                           const VectorType &                    velocity_vector,
-                           const VectorType &                    levelset_vector,
-                           const BlockVectorType &               normal_vector,
-                           const double &                        eps_used,
-                           const DoFHandler<dim, spacedim> &     euler_dofhandler,
-                           const Mapping<dim, spacedim> &        euler_mapping,
-                           VectorType &                          euler_coordinates_vector)
-    {
-      FEValues<dim, spacedim> fe_eval(
-        euler_mapping,
-        euler_dofhandler.get_fe(),
-        Quadrature<dim>(
-          euler_dofhandler.get_fe().base_element(0).get_unit_support_points()),
-        update_quadrature_points);
-
-      Vector<double>                       temp;
-      std::vector<types::global_dof_index> temp_dof_indices;
-
-      auto euler_coordinates_vector_temp = euler_coordinates_vector;
-
-      levelset_vector.update_ghost_values();
-      normal_vector.update_ghost_values();
-
-      for (int j = 0; j < 3 /*TODO: make parameter*/; ++j)
-        {
-          std::vector<Point<spacedim>> evaluation_points;
-          for (const auto &cell : euler_dofhandler.active_cell_iterators())
-            {
-              fe_eval.reinit(cell);
-
-              for (const auto q : fe_eval.quadrature_point_indices())
-                evaluation_points.push_back(fe_eval.quadrature_point(q));
-            }
-
-          Utilities::MPI::RemotePointEvaluation<spacedim, spacedim> cache;
-          
-          cache.reinit(evaluation_points, background_dofhandler.get_triangulation(), background_mapping);
-
-          const auto evaluation_values_ls = 
-            VectorTools::point_values<1>(cache,
-                                         background_dofhandler,
-                                         levelset_vector);
-        
-          std::array<std::vector<double>, spacedim> evaluation_values_normal;
-          
-          for (unsigned int comp = 0; comp < spacedim; ++comp)
-            evaluation_values_normal[comp] =
-            VectorTools::point_values<1>(cache,
-                                         background_dofhandler,
-                                         normal_vector.block(comp));
-        
-          unsigned int counter = 0;
-
-          for (const auto &cell : euler_dofhandler.active_cell_iterators())
-            {
-              fe_eval.reinit(cell);
-
-              temp.reinit(fe_eval.dofs_per_cell);
-              temp_dof_indices.resize(fe_eval.dofs_per_cell);
-
-              cell->get_dof_indices(temp_dof_indices);
-
-              
-              cell->get_dof_values(euler_coordinates_vector, temp);
-
-              for (const auto q : fe_eval.quadrature_point_indices())
-                {
-                  const auto phi = evaluation_values_ls[counter];
-                  double distance = (1 - phi * phi) > 1e-2 ?
-                        eps_used * std::log((1. + phi) / (1. - phi)) :
-                         0;
-                  
-                  Point<spacedim> normal;
-                  
-                  for (unsigned int comp = 0; comp < spacedim; ++comp)
-                    normal[comp] = evaluation_values_normal[comp][counter];
-                  
-                  if(normal.norm() > 1e-10)
-                      normal/=normal.norm();
-
-                  //if(phi[q] < 1.0 && phi[q] > -1.0)
-                  for (unsigned int comp = 0; comp < spacedim; ++comp)
-                  {
-                    temp[euler_dofhandler.get_fe().component_to_system_index(comp, q)] = 
-                            fe_eval.quadrature_point(q)[comp]  - normal[comp] * distance;
-                    /*std::cout.precision(8);
-                    std::cout << "comp = "<< comp << " : " << std::endl;
-                    std::cout << "x_neu  = " << temp[euler_dofhandler.get_fe().component_to_system_index(comp, q)] 
-                              << "    x_alt = " << fe_eval.quadrature_point(q)[comp] 
-                              << " phi = " << phi << "  normal = " << normal[comp] << std::endl;
-                              */
-                  }
-                  counter++;
-                }
-                
-              cell->set_dof_values(temp, euler_coordinates_vector_temp);
-            }
-      
-        	  euler_coordinates_vector = euler_coordinates_vector_temp;
-          }
-    }
   } // namespace VectorTools
 
   namespace GridTools
@@ -540,7 +330,7 @@ collect_integration_points(
  */
 template <int dim, int spacedim, typename VectorType>
 void
-compute_force_vector_sharp_interface(
+compute_force_vector_sharp_interface_lagrange(
   const Mapping<dim, spacedim> &   surface_mapping,
   const DoFHandler<dim, spacedim> &surface_dofhandler,
   const DoFHandler<dim, spacedim> &surface_dofhandler_dim,
@@ -841,18 +631,69 @@ collect_evaluation_points(const Triangulation<dim, spacedim> &     surface_mesh,
  */
 template <int dim, int spacedim, typename VectorType, typename BlockVectorType>
 void
-compute_force_vector_sharp_interface(const Triangulation<dim, spacedim> &surface_mesh,
+compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &surface_mesh,
                                      const Mapping<dim, spacedim> &      surface_mapping,
+                                     const DoFHandler<dim, spacedim> &surface_dofhandler,
+                                     const DoFHandler<dim, spacedim> &surface_dofhandler_dim,
                                      const Quadrature<dim> &     surface_quadrature,
                                      const Mapping<spacedim> &   mapping,
                                      const DoFHandler<spacedim> &dof_handler,
                                      const DoFHandler<spacedim> &dof_handler_dim,
                                      const double                surface_tension,
                                      const BlockVectorType &     normal_solution,
+                                     const VectorType &          normal_lagrange_vector,
                                      const VectorType &          curvature_solution,
+                                     const VectorType &          force_lagrange_vector,
                                      VectorType &                force_vector)
 {
   using T = double; // type of data to be communicated (only |J|xW)
+
+  // for surface mesh evaluation
+  //TODO: right dimensioN???
+    std::vector<double>         force_l_values;
+    std::vector<Vector<double>> normal_l_values, curvature_l_values;
+
+    FEValues<dim, spacedim> fe_l_eval(surface_mapping,
+                                    surface_dofhandler.get_fe(),
+                                    surface_quadrature,
+                                    update_values | update_quadrature_points |
+                                      update_JxW_values);
+    FEValues<dim, spacedim> fe_l_eval_dim(surface_mapping,
+                                        surface_dofhandler_dim.get_fe(),
+                                        surface_quadrature,
+                                        update_values);
+    
+    const auto &tria_surface = surface_dofhandler.get_triangulation();
+
+    for (const auto &cell : tria_surface.active_cell_iterators())
+      {
+        //TODO: right place?
+        // for surface mesh normal and force handling
+        TriaIterator<DoFCellAccessor<dim, spacedim, false>> dof_cell(&tria_surface,
+                                                                     cell->level(),
+                                                                     cell->index(),
+                                                                     &surface_dofhandler);
+        TriaIterator<DoFCellAccessor<dim, spacedim, false>> dof_cell_dim(
+          &tria_surface, cell->level(), cell->index(), &surface_dofhandler_dim);
+
+        fe_l_eval.reinit(dof_cell);
+        fe_l_eval_dim.reinit(dof_cell_dim);
+
+        force_l_values.resize(fe_l_eval.dofs_per_cell);
+        normal_l_values.resize(fe_l_eval.dofs_per_cell, Vector<double>(spacedim));
+        curvature_l_values.resize(fe_l_eval.dofs_per_cell, Vector<double>(spacedim));
+
+        fe_l_eval.get_function_values(force_lagrange_vector, force_l_values);
+        fe_l_eval_dim.get_function_values(normal_lagrange_vector, normal_l_values);
+
+        for (const auto q : fe_l_eval_dim.quadrature_point_indices())
+          {
+            for (unsigned int i = 0; i < spacedim; ++i)
+               curvature_l_values[q][i] = (force_l_values[q] * normal_l_values[q][i])/
+                (surface_tension * normal_l_values[q][i] * normal_l_values[q][i]) ;
+          }
+      }
+
 
   std::vector<Point<spacedim>> integration_points;
   {
@@ -871,7 +712,7 @@ compute_force_vector_sharp_interface(const Triangulation<dim, spacedim> &surface
         fe_eval.reinit(cell);
 
         for (const auto q : fe_eval.quadrature_point_indices())
-          integration_points.push_back(fe_eval.quadrature_point(q));
+          integration_points.push_back(fe_eval.quadrature_point(q)); 
       }
   }
 
@@ -880,6 +721,7 @@ compute_force_vector_sharp_interface(const Triangulation<dim, spacedim> &surface
 
   std::vector<T> integration_values;
   {
+    //TODO: combine this with the one above?
     FE_Nothing<dim, spacedim> dummy;
 
     FEValues<dim, spacedim> fe_eval(surface_mapping,
@@ -981,10 +823,16 @@ compute_force_vector_sharp_interface(const Triangulation<dim, spacedim> &surface
                       << phi_normal.get_value(q)[1] <<std::endl;
                       */
             Assert(phi_normal.get_value(q).norm() > 0, ExcNotImplemented());
-            const auto normal = phi_normal.get_value(q) / phi_normal.get_value(q).norm();
+            /*const auto normal = phi_normal.get_value(q) / phi_normal.get_value(q).norm();
             phi_force.submit_value(surface_tension * normal *
                                      phi_curvature.get_value(q) * JxW[q],
                                    q);
+             */ 
+            //TODO: does not fit with typ!
+            phi_force.submit_value(surface_tension * curvature_l_values[q] *
+                          phi_normal.get_value(q) * JxW[q],
+                        q);         
+                        
           }
 
         // integrate_scatter force
