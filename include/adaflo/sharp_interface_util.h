@@ -55,14 +55,9 @@ namespace dealii
                            const DoFHandler<spacedim, spacedim> &background_dofhandler,
                            const Mapping<spacedim, spacedim> &   background_mapping,
                            const VectorType &                    velocity_vector,
-                           const VectorType &                    velocity_vector_old,
-                           const VectorType &                    velocity_vector_old_old,
                            const DoFHandler<dim, spacedim> &     euler_dofhandler,
                            const Mapping<dim, spacedim> &        euler_mapping,
-                           const Mapping<dim, spacedim> &        euler_mapping_old,
-                           VectorType &                          euler_coordinates_vector,
-                           VectorType &                          euler_coordinates_vector_old,
-                           VectorType &                          euler_coordinates_vector_old_old)
+                           VectorType &                          euler_coordinates_vector)
     {
       FEValues<dim, spacedim> fe_eval(
         euler_mapping,
@@ -71,26 +66,21 @@ namespace dealii
           euler_dofhandler.get_fe().base_element(0).get_unit_support_points()),
         update_quadrature_points);
 
-      FEValues<dim, spacedim> fe_eval_old(
-        euler_mapping_old,
-        euler_dofhandler.get_fe(),
-        Quadrature<dim>(
-          euler_dofhandler.get_fe().base_element(0).get_unit_support_points()),
-        update_quadrature_points);
 
       Vector<double>                       temp;
       std::vector<types::global_dof_index> temp_dof_indices;
       
       //for RK4 method
-      Vector<double>                     velocity_half_dt, velocity_half_dt_x_old, velocity_dt, velocity_dt_x_old;
-      Vector<double>                     pos_old;
+      double                             temp_K2, temp_K3, temp_K4;
       double                             K1, K2, K3, K4;
+      //TODO: cache??
+      //?? evaluation_func;
 
       auto euler_coordinates_vector_temp = euler_coordinates_vector;
 
       velocity_vector.update_ghost_values();
 
-      std::vector<Point<spacedim>> evaluation_points, evaluation_points_old;
+      std::vector<Point<spacedim>> evaluation_points;
 
       for (const auto &cell : euler_dofhandler.active_cell_iterators())
         {
@@ -98,16 +88,6 @@ namespace dealii
 
           for (const auto q : fe_eval.quadrature_point_indices())
             evaluation_points.push_back(fe_eval.quadrature_point(q));
-        }
-
-
-      //TODO: fe_eval_old for surface mesh at old timestep???
-      for (const auto &cell : euler_dofhandler.active_cell_iterators())
-        {
-          fe_eval_old.reinit(cell);
-
-          for (const auto q : fe_eval_old.quadrature_point_indices())
-            evaluation_points_old.push_back(fe_eval.quadrature_point(q));
         }
       
 
@@ -121,27 +101,6 @@ namespace dealii
                                             evaluation_points,
                                             cache);
 
-      const auto evaluation_values_t_old =
-        VectorTools::point_values<spacedim>(background_mapping,
-                                                  background_dofhandler,
-                                                  velocity_vector_old,
-                                                  evaluation_points,
-                                                  cache);
-
-      const auto evaluation_values_t_old_x_old =
-        VectorTools::point_values<spacedim>(background_mapping,
-                                                  background_dofhandler,
-                                                  velocity_vector_old,
-                                                  evaluation_points_old,
-                                                  cache);
-
-      const auto evaluation_values_x_old =
-        VectorTools::point_values<spacedim>(background_mapping,
-                                                  background_dofhandler,
-                                                  velocity_vector,
-                                                  evaluation_points_old,
-                                                  cache);   
-      
       unsigned int counter = 0;
 
       for (const auto &cell : euler_dofhandler.active_cell_iterators())
@@ -149,64 +108,34 @@ namespace dealii
           fe_eval.reinit(cell);
 
           temp.reinit(fe_eval.dofs_per_cell);
-          pos_old.reinit(fe_eval.dofs_per_cell);
-          velocity_half_dt.reinit(fe_eval.dofs_per_cell);
-          velocity_half_dt_x_old.reinit(fe_eval.dofs_per_cell);
-          velocity_dt.reinit(fe_eval.dofs_per_cell);
-          velocity_dt_x_old.reinit(fe_eval.dofs_per_cell);
-
           temp_dof_indices.resize(fe_eval.dofs_per_cell);
 
           cell->get_dof_indices(temp_dof_indices);
           cell->get_dof_values(euler_coordinates_vector, temp);
-          cell->get_dof_values(euler_coordinates_vector_old, pos_old);
 
           for (const auto q : fe_eval.quadrature_point_indices())
             {
-              const auto velocity = evaluation_values[counter];
-              const auto velocity_t_old = evaluation_values_t_old[counter];
-              const auto velocity_t_old_x_old = evaluation_values_t_old_x_old[counter];
-              const auto velocity_x_old = evaluation_values_x_old[counter];
+              const auto velocity = evaluation_values[counter++];
 
               for (unsigned int comp = 0; comp < spacedim; ++comp)
                 {
                   const auto i =
                     euler_dofhandler.get_fe().component_to_system_index(comp, q);
-               
-                //TODO: Implement RK4 method to get new postition
-                /* help velocities for extrapolation for K's */
-                  // v(t_i+dt, x_i) = v(t_i,x_i) + 1/2*(v(t_i,x_i) - v(t_i-1,x_i))
-                  velocity_half_dt[i] = velocity[comp] + 0.5*(velocity[comp] - velocity_t_old[comp]);
-                  // v(t_i+dt, x_i-1) = v(t_i,x_i-1) + 1/2*(v(t_i,x_i-1) - v(t_i-1,x_i-1))
-                  velocity_half_dt_x_old[i] = velocity_x_old[comp] + 0.5*(velocity_x_old[comp] - velocity_t_old_x_old[comp]);
-                  // v(t_i+1, x_i) = 2*v(t_i,x_i) - v(t_i-1,x_i))
-                  velocity_dt[i] = 2*velocity[comp] - velocity_t_old[comp];
-                  // v(t_i+1, x_i-1) = 2*v(t_i,x_i-1)  - v(t_i-1,x_i-1)
-                  velocity_dt_x_old[i] = 2*velocity_x_old[comp] - velocity_t_old_x_old[comp];
-
-                  std::cout << "comp = " << comp << "   i = " << i << std::endl;
-                  std::cout << "velocity old = " << velocity_t_old[comp] << " and velocity = " << velocity[comp]
-                            << " and velo t&x old = " << velocity_t_old_x_old[comp] << " and velo x old = " << velocity_x_old[comp]<< std::endl;
-                  std::cout << "velocity half = " << velocity_half_dt[i] << " and velocity half old = " << velocity_half_dt_x_old[i] << std::endl;
-                  std::cout << "temp  = " << temp[i] << "  and pos old = " << pos_old[i]<< std::endl;
                   
                   // K1 = v(t_i, x_i)
                   K1 = velocity[comp];
-
-                  // if x_i-1 = x_i
-                  if(pos_old[i] == fe_eval.quadrature_point(q)[comp])
-                  {
-                    K2 = velocity_half_dt[i];
-                    K3 = velocity_half_dt[i];
-                    K4 = velocity_dt[comp];
-                  }else{
-                    // K2 = v(t_i + dt/2, x_i + dt/2*K1)
-                    K2 = velocity_half_dt[i] + (velocity_half_dt[i] - velocity_half_dt_x_old[i])/(fe_eval.quadrature_point(q)[comp] - pos_old[i]) *  dt/2*K1;
-                    // K3 = v(t_i + dt/2, x_i + dt/2*K2)
-                    K3 = velocity_half_dt[i] + (velocity_half_dt[i] - velocity_half_dt_x_old[i])/(fe_eval.quadrature_point(q)[comp] - pos_old[i]) *  dt/2*K2;
-                    // K4 = v(t_i + dt, x_i + dt*K3)
-                    K4 = velocity_dt[comp] + (velocity_dt[comp] - velocity_dt_x_old[comp])/(fe_eval.quadrature_point(q)[comp] - pos_old[i]) *  dt*K3 ;
-                  }
+                  // K2 = v(t_i + dt/2, x_i + dt/2*K1)
+                  temp_K2 = fe_eval.quadrature_point(q)[comp] +  dt/2*K1;
+                  Utilities::MPI::RemotePointEvaluation< spacedim, spacedim >::process_and_evaluate(temp_K2, buffer, evaluation_func);
+                  K2 = evaluation_func;
+                  // K3 = v(t_i + dt/2, x_i + dt/2*K2)
+                  temp_K3 = fe_eval.quadrature_point(q)[comp] +  dt/2*K2;
+                  Utilities::MPI::RemotePointEvaluation< spacedim, spacedim >::process_and_evaluate(temp_K3, buffer, evaluation_func);
+                  K3 = evaluation_func;
+                  // K4 = v(t_i + dt, x_i + dt*K3)
+                  temp_K4 = fe_eval.quadrature_point(q)[comp] +  dt*K3;
+                  Utilities::MPI::RemotePointEvaluation< spacedim, spacedim >::process_and_evaluate(temp_K4, buffer, evaluation_func);
+                  K4 = evaluation_func;
                   
                   temp[i] = fe_eval.quadrature_point(q)[comp] + dt/6*(K1 + 2*K2 + 2*K3 + K4);
                   std::cout << "i = " << i << ": quad pt = " << fe_eval.quadrature_point(q)[comp] << "  and temp = " << temp[i] << std::endl;
@@ -218,12 +147,9 @@ namespace dealii
             }
 
           cell->set_dof_values(temp, euler_coordinates_vector_temp);
-          counter = counter +1;
         }
 
       //save position for RK4 time step in next cyle
-      //euler_coordinates_vector_old_old = euler_coordinates_vector_old;
-      euler_coordinates_vector_old = euler_coordinates_vector;
       euler_coordinates_vector = euler_coordinates_vector_temp;
     }
 
