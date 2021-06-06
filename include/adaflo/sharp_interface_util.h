@@ -69,12 +69,6 @@ namespace dealii
 
       Vector<double>                       temp;
       std::vector<types::global_dof_index> temp_dof_indices;
-      
-      //for RK4 method
-      std::vector<double>                temp_K2, temp_K3, temp_K4, buffer;
-      double                             K1, K2, K3, K4;
-      //TODO: cache??
-      const std::function< void(const ArrayView< const T > &, const CellData &)>  evaluation_func;
 
       auto euler_coordinates_vector_temp = euler_coordinates_vector;
 
@@ -109,11 +103,6 @@ namespace dealii
 
           temp.reinit(fe_eval.dofs_per_cell);
           temp_dof_indices.resize(fe_eval.dofs_per_cell);
-          
-          temp_K2.resize(fe_eval.dofs_per_cell);
-          temp_K3.resize(fe_eval.dofs_per_cell);
-          temp_K4.resize(fe_eval.dofs_per_cell);
-          buffer.resize(fe_eval.dofs_per_cell);
 
           cell->get_dof_indices(temp_dof_indices);
           cell->get_dof_values(euler_coordinates_vector, temp);
@@ -127,34 +116,12 @@ namespace dealii
                   const auto i =
                     euler_dofhandler.get_fe().component_to_system_index(comp, q);
                   
-                  // K1 = v(t_i, x_i)
-                  K1 = velocity[comp];
-                  // K2 = v(t_i + dt/2, x_i + dt/2*K1)
-                  temp_K2[i] = fe_eval.quadrature_point(q)[comp] +  dt/2*K1;
-                  Utilities::MPI::RemotePointEvaluation< spacedim, spacedim >::process_and_evaluate(temp_K2, buffer, evaluation_func);
-                  K2 = evaluation_func;
-                  // K3 = v(t_i + dt/2, x_i + dt/2*K2)
-                  temp_K3[i] = fe_eval.quadrature_point(q)[comp] +  dt/2*K2;
-                  Utilities::MPI::RemotePointEvaluation< spacedim, spacedim >::process_and_evaluate(temp_K3, buffer, evaluation_func);
-                  K3 = evaluation_func;
-                  // K4 = v(t_i + dt, x_i + dt*K3)
-                  temp_K4[i] = fe_eval.quadrature_point(q)[comp] +  dt*K3;
-                  Utilities::MPI::RemotePointEvaluation< spacedim, spacedim >::process_and_evaluate(temp_K4, buffer, evaluation_func);
-                  K4 = evaluation_func;
-                  
-                  temp[i] = fe_eval.quadrature_point(q)[comp] + dt/6*(K1 + 2*K2 + 2*K3 + K4);
-                  std::cout << "i = " << i << ": quad pt = " << fe_eval.quadrature_point(q)[comp] << "  and temp = " << temp[i] << std::endl;
-                  std::cout << "k1 = " << K1 << " and K2 = " << K2 << " and K3 = " << K3 << " and K4 = " << K4 << "\n" << std::endl;
-                
-                // old variant: explicit Euler
-                // temp[i] = fe_eval.quadrature_point(q)[comp] + dt * velocity[comp];
+                  temp[i] = fe_eval.quadrature_point(q)[comp] + dt * velocity[comp];
                 }
             }
 
           cell->set_dof_values(temp, euler_coordinates_vector_temp);
         }
-
-      //save position for RK4 time step in next cyle
       euler_coordinates_vector = euler_coordinates_vector_temp;
     }
 
