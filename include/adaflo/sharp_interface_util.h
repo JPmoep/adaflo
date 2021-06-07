@@ -360,12 +360,15 @@ compute_force_vector_sharp_interface_lagrange(
 
     for (const auto &cell : tria_surface.active_cell_iterators())
       {
+        std::cout << "before TriaIterator"  << std::endl;
         TriaIterator<DoFCellAccessor<dim, spacedim, false>> dof_cell(&tria_surface,
                                                                      cell->level(),
                                                                      cell->index(),
                                                                      &surface_dofhandler);
+         std::cout << "inbetween TriaIterator"  << std::endl;
         TriaIterator<DoFCellAccessor<dim, spacedim, false>> dof_cell_dim(
           &tria_surface, cell->level(), cell->index(), &surface_dofhandler_dim);
+          std::cout << "after TriaIterator"  << std::endl;
 
         fe_eval.reinit(dof_cell);
         fe_eval_dim.reinit(dof_cell_dim);
@@ -373,37 +376,53 @@ compute_force_vector_sharp_interface_lagrange(
         std::vector<double>         curvature_values(fe_eval.dofs_per_cell);
         std::vector<Vector<double>> normal_values(fe_eval.dofs_per_cell,
                                                   Vector<double>(spacedim));
-
+        std::cout << "before getfunc values"  << std::endl;
         fe_eval.get_function_values(curvature_vector, curvature_values);
+        std::cout << "inbetween getfunc values"  << std::endl;
         fe_eval_dim.get_function_values(normal_vector, normal_values);
+        std::cout << "after getfunc values"  << std::endl;
 
         for (const auto q : fe_eval_dim.quadrature_point_indices())
           {
+            std::cout << "quad point = " << q << std::endl;
             Tensor<1, spacedim, double> result;
             for (unsigned int i = 0; i < spacedim; ++i)
+            {
+              std::cout << "spacedim = " << i << std::endl;
+              std::cout << "curvature = " << curvature_values[q] << std::endl;
+              std::cout << "normal = " << normal_values[q][i] << std::endl;
+              std::cout << "JxW = " << fe_eval.JxW(q)  << std::endl;
               result[i] = -curvature_values[q] * normal_values[q][i] * fe_eval.JxW(q) *
                           surface_tension;
+              std::cout << "result = " << result[i]  << std::endl;
             // f = kappa * n * JxW * sigma
+            }
+            std::cout << "quad point = " << fe_eval.quadrature_point(q)  << std::endl;
             integration_points.push_back(fe_eval.quadrature_point(q));
+            std::cout << "after integ point "  << std::endl;
             integration_values.push_back(result);
+            std::cout << "after integ value "  << std::endl;
           }
       }
   }
-
+std::cout << "before collection function "  << std::endl;
   const auto [cells, ptrs, weights, points] = collect_integration_points(
     dof_handler.get_triangulation(), mapping, integration_points, integration_values);
+    std::cout << "after collection function"  << std::endl;
 
   AffineConstraints<double> constraints; // TODO: use the right ones
 
   FEPointEvaluation<spacedim, spacedim> phi_normal_force(mapping,
                                                          dof_handler.get_fe(),
                                                          update_values);
+  std::cout << "afterFEp"  << std::endl;
 
   std::vector<double>                  buffer;
   std::vector<types::global_dof_index> local_dof_indices;
 
   for (unsigned int i = 0; i < cells.size(); ++i)
     {
+      std::cout << "cell  = " << i << std::endl;
       typename DoFHandler<spacedim>::active_cell_iterator cell(
         &dof_handler.get_triangulation(), cells[i].first, cells[i].second, &dof_handler);
 
@@ -424,8 +443,11 @@ compute_force_vector_sharp_interface_lagrange(
       phi_normal_force.reinit(cell, unit_points);
 
       for (unsigned int q = 0; q < n_points; ++q)
+      {
+        std::cout << "n_point = " << q << std::endl;
         phi_normal_force.submit_value(JxW[q], q);
-
+     }
+       
       // integrate values with test function and store in buffer
       phi_normal_force.integrate(buffer, EvaluationFlags::values);
       // local buffer into global force vector
@@ -650,8 +672,9 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
 
   // for surface mesh evaluation
   //TODO: right dimensioN???
-    std::vector<double>         force_l_values;
-    std::vector<Vector<double>> normal_l_values, curvature_l_values;
+    std::vector<double>         curvature_l_values;
+    std::vector<Vector<double>> normal_l_values, force_l_values;
+    double                      result_1, result_2;
 
     FEValues<dim, spacedim> fe_l_eval(surface_mapping,
                                     surface_dofhandler.get_fe(),
@@ -679,18 +702,21 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
         fe_l_eval.reinit(dof_cell);
         fe_l_eval_dim.reinit(dof_cell_dim);
 
-        force_l_values.resize(fe_l_eval.dofs_per_cell);
+        force_l_values.resize(fe_l_eval.dofs_per_cell, Vector<double>(spacedim));
         normal_l_values.resize(fe_l_eval.dofs_per_cell, Vector<double>(spacedim));
-        curvature_l_values.resize(fe_l_eval.dofs_per_cell, Vector<double>(spacedim));
+        curvature_l_values.resize(fe_l_eval.dofs_per_cell);
 
-        fe_l_eval.get_function_values(force_lagrange_vector, force_l_values);
+        fe_l_eval_dim.get_function_values(force_lagrange_vector, force_l_values);
         fe_l_eval_dim.get_function_values(normal_lagrange_vector, normal_l_values);
 
         for (const auto q : fe_l_eval_dim.quadrature_point_indices())
           {
             for (unsigned int i = 0; i < spacedim; ++i)
-               curvature_l_values[q][i] = (force_l_values[q] * normal_l_values[q][i])/
-                (surface_tension * normal_l_values[q][i] * normal_l_values[q][i]) ;
+            {
+              result_1 = (force_l_values[q][i] * normal_l_values[q][i]);
+              result_2 =  (surface_tension * normal_l_values[q][i] * normal_l_values[q][i]) ;
+            }
+            curvature_l_values[q] = result_1/result_2;
           }
       }
 
