@@ -1449,7 +1449,16 @@ private:
                         normal_l_vector,
                         curvature_l_vector);
 
-      compute_force_vector_sharp_interface_lagrange(
+      compute_lagragian_force(*euler_mapping,
+                        euler_dofhandler_dim,
+                        euler_dofhandler,
+                        QGaussLobatto<dim - 1>(euler_dofhandler.get_fe().degree + 1),
+                        navier_stokes_solver.get_parameters().surface_tension,
+                        normal_l_vector,
+                        curvature_l_vector,
+                        surface_force_lagrange_vector);
+
+      /*compute_force_vector_sharp_interface_lagrange(
         *euler_mapping,
         euler_dofhandler,
         euler_dofhandler_dim,
@@ -1459,7 +1468,8 @@ private:
         navier_stokes_solver.get_parameters().surface_tension,
         normal_l_vector,
         curvature_l_vector,
-        surface_force_lagrange_vector);
+        navier_stokes_solver.user_rhs.block(0));
+        */
 
       compute_hybrid_force_vector_sharp_interface(
         euler_dofhandler_dim.get_triangulation(),

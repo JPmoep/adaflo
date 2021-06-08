@@ -392,8 +392,10 @@ compute_force_vector_sharp_interface_lagrange(
               std::cout << "curvature = " << curvature_values[q] << std::endl;
               std::cout << "normal = " << normal_values[q][i] << std::endl;
               std::cout << "JxW = " << fe_eval.JxW(q)  << std::endl;
+
               result[i] = -curvature_values[q] * normal_values[q][i] * fe_eval.JxW(q) *
                           surface_tension;
+
               std::cout << "result = " << result[i]  << std::endl;
             // f = kappa * n * JxW * sigma
             }
@@ -415,6 +417,7 @@ std::cout << "before collection function "  << std::endl;
   FEPointEvaluation<spacedim, spacedim> phi_normal_force(mapping,
                                                          dof_handler.get_fe(),
                                                          update_values);
+
   std::cout << "afterFEp"  << std::endl;
 
   std::vector<double>                  buffer;
@@ -487,7 +490,12 @@ compute_normal(const Mapping<dim, spacedim> &   mapping,
           const unsigned int comp =
             dof_handler_dim.get_fe().system_to_component_index(q).first;
 
+          std::cout << "q = " << q << "   comp = " << comp 
+                  << "   normal_0 = " << normal[0]
+                  << "   normal_1 = " << normal[1] << std::endl;
+
           normal_temp[q] = normal[comp];
+          std::cout << "normal = " << normal_temp[q]<< std::endl;
         }
 
       cell->set_dof_values(normal_temp, normal_vector);
@@ -548,6 +556,99 @@ compute_curvature(const Mapping<dim, spacedim> &   mapping,
         }
 
       cell->set_dof_values(curvature_temp, curvature_vector);
+    }
+}
+
+/**
+ * routine to compute lagragian force from actual interface at surface mesh
+ * with geomatric values for curvature and normaal for front-tracking method
+ */
+template <int dim, int spacedim, typename VectorType>
+void
+compute_lagragian_force(const Mapping<dim, spacedim> &   mapping,
+                  const DoFHandler<dim, spacedim> &dof_handler_dim,
+                  const DoFHandler<dim, spacedim> &dof_handler,
+                  const Quadrature<dim>            quadrature,
+                  const double                     surface_tension,
+                  const VectorType &               normal_vector,
+                  const VectorType &               curvature_vector,
+                  VectorType &                     force_vector)
+{
+  FEValues<dim, spacedim> fe_eval(mapping,
+                                  dof_handler.get_fe(),
+                                  quadrature,
+//                                  dof_handler.get_fe().get_unit_support_points(),
+                                  update_values | update_JxW_values );
+  FEValues<dim, spacedim> fe_eval_dim(mapping,
+                                      dof_handler_dim.get_fe(),
+                                      dof_handler_dim.get_fe().get_unit_support_points(),
+                                      update_values | update_normal_vectors);
+
+  Vector<double>  force_temp;
+
+  for (const auto &cell : dof_handler.active_cell_iterators())
+    {
+      TriaIterator<DoFCellAccessor<dim, spacedim, false>> dof_cell(
+        &dof_handler.get_triangulation(),
+        cell->level(),
+        cell->index(),
+        &dof_handler);
+
+      TriaIterator<DoFCellAccessor<dim, spacedim, false>> dof_cell_dim(
+        &dof_handler_dim.get_triangulation(),
+        cell->level(),
+        cell->index(),
+        &dof_handler_dim);
+
+      fe_eval.reinit(dof_cell);
+      fe_eval_dim.reinit(dof_cell_dim);
+
+      force_temp.reinit(fe_eval.dofs_per_cell);
+      force_temp = 0.0;
+
+      std::cout << " fe_eval_dim dofs = " << fe_eval_dim.dofs_per_cell << " fe_eval dofs = " 
+            << fe_eval.dofs_per_cell << "size force = " << force_temp.size() << std::endl;
+
+      std::vector<double>         curvature_values(fe_eval.dofs_per_cell);
+      std::vector<Vector<double>> normal_values(fe_eval.dofs_per_cell,
+                                                Vector<double>(spacedim));
+      std::cout << "here" << std::endl;
+      fe_eval.get_function_values(curvature_vector, curvature_values);
+      std::cout << "or here" << std::endl;
+      fe_eval_dim.get_function_values(normal_vector, normal_values);
+
+      for (const auto q : fe_eval.quadrature_point_indices())
+        {
+          
+          Tensor<1, spacedim, double> force_dimm;
+          //TODO: not sure about comp or i or how to do it right
+          const unsigned int comp =
+            dof_handler_dim.get_fe().system_to_component_index(q).first;
+
+          std::cout << "q = " << q << "   spacedim = " << spacedim 
+                    << "   comp = " << comp << std::endl;
+          
+          std::cout <<"curvature value = " << curvature_values[q]
+                    << "   normal size = " << normal_values[q].size() << std::endl;
+
+          for (unsigned c = 0; c < spacedim; ++c)
+          {
+            //const auto i =
+            //   dof_handler.get_fe().component_to_system_index(c, q);
+            force_dimm[comp] = -curvature_values[q] * normal_values[q][c] * fe_eval.JxW(q) *
+                          surface_tension;
+              std::cout << "  force_dim = " << force_dimm[comp] << std::endl;
+              std::cout << "curvature = " << curvature_values[q] << std::endl;
+              std::cout << "normal = " << normal_values[q][c] << std::endl;
+              std::cout << "JxW = " << fe_eval.JxW(q) << std::endl;
+          }
+          force_temp[q] = force_dimm[comp]; 
+          std::cout << "force_temp = " << force_temp[q] << std::endl;
+        }
+      std::cout << "set dof values " << std::endl;
+      //TODO: this does not fit, why????
+      cell->set_dof_values(force_temp, force_vector);
+      std::cout << "done set dof values " << std::endl;
     }
 }
 
@@ -701,13 +802,20 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
 
         fe_l_eval.reinit(dof_cell);
         fe_l_eval_dim.reinit(dof_cell_dim);
+        std::cout << "dofs feval_dim = " << fe_l_eval_dim.dofs_per_cell
+                << "dofs feval = " << fe_l_eval.dofs_per_cell
+                << std::endl;
+        std::cout << "dofs force = " << force_lagrange_vector.size() << std::endl;
 
-        force_l_values.resize(fe_l_eval.dofs_per_cell, Vector<double>(spacedim));
+        force_l_values.resize(fe_l_eval_dim.dofs_per_cell, Vector<double>(spacedim));
         normal_l_values.resize(fe_l_eval.dofs_per_cell, Vector<double>(spacedim));
         curvature_l_values.resize(fe_l_eval.dofs_per_cell);
 
-        fe_l_eval_dim.get_function_values(force_lagrange_vector, force_l_values);
+        std::cout << "before get func values force " << std::endl;
+       fe_l_eval_dim.get_function_values(force_lagrange_vector, force_l_values);
+        std::cout << "after get func values force " << std::endl;
         fe_l_eval_dim.get_function_values(normal_lagrange_vector, normal_l_values);
+        std::cout << "after get func values normal " << std::endl;
 
         for (const auto q : fe_l_eval_dim.quadrature_point_indices())
           {
