@@ -619,30 +619,24 @@ compute_lagragian_force(const Mapping<dim, spacedim> &   mapping,
 
       for (const auto q : fe_eval.quadrature_point_indices())
         {
-          
-          Tensor<1, spacedim, double> force_dimm;
-          //TODO: not sure about comp or i or how to do it right
-          const unsigned int comp =
-            dof_handler_dim.get_fe().system_to_component_index(q).first;
-
-          std::cout << "q = " << q << "   spacedim = " << spacedim 
-                    << "   comp = " << comp << std::endl;
-          
-          std::cout <<"curvature value = " << curvature_values[q]
-                    << "   normal size = " << normal_values[q].size() << std::endl;
+          //Tensor<1, spacedim, double> force_dimm;
+          std::vector<double> force_dimm(spacedim);
 
           for (unsigned c = 0; c < spacedim; ++c)
           {
-            //const auto i =
-            //   dof_handler.get_fe().component_to_system_index(c, q);
-            force_dimm[comp] = -curvature_values[q] * normal_values[q][c] * fe_eval.JxW(q) *
+            force_dimm[c] = -curvature_values[q] * normal_values[q][c] * fe_eval.JxW(q) *
                           surface_tension;
-              std::cout << "  force_dim = " << force_dimm[comp] << std::endl;
+              std::cout << "  force_dim = " << force_dimm[c] << std::endl;
               std::cout << "curvature = " << curvature_values[q] << std::endl;
               std::cout << "normal = " << normal_values[q][c] << std::endl;
               std::cout << "JxW = " << fe_eval.JxW(q) << std::endl;
           }
+          //TODO: not sure about comp or how to do it right
+          const unsigned int comp =
+            dof_handler_dim.get_fe().system_to_component_index(q).first;
           force_temp[q] = force_dimm[comp]; 
+          std::cout << "q = " << q << "   spacedim = " << spacedim 
+                    << "   comp = " << comp << std::endl;
           std::cout << "force_temp = " << force_temp[q] << std::endl;
         }
       std::cout << "set dof values " << std::endl;
