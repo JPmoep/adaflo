@@ -1438,6 +1438,7 @@ private:
     // mixed level set
     if (use_auxiliary_surface_mesh && use_sharp_interface)
     {      
+      surface_force_lagrange_vector.reinit(euler_dofhandler_dim.n_dofs());
       normal_l_vector.reinit(euler_dofhandler_dim.n_dofs());
       curvature_l_vector.reinit(euler_dofhandler.n_dofs());
 

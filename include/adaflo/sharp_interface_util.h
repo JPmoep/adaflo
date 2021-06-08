@@ -497,7 +497,6 @@ compute_normal(const Mapping<dim, spacedim> &   mapping,
           normal_temp[q] = normal[comp];
           std::cout << "normal = " << normal_temp[q]<< std::endl;
         }
-
       cell->set_dof_values(normal_temp, normal_vector);
     }
 }
@@ -584,9 +583,9 @@ compute_lagragian_force(const Mapping<dim, spacedim> &   mapping,
                                       dof_handler_dim.get_fe().get_unit_support_points(),
                                       update_values | update_normal_vectors);
 
-  Vector<double>  force_temp;
+  Vector<double>  force_temp, force_temp_2;
 
-  for (const auto &cell : dof_handler.active_cell_iterators())
+  for (const auto &cell : dof_handler_dim.active_cell_iterators())
     {
       TriaIterator<DoFCellAccessor<dim, spacedim, false>> dof_cell(
         &dof_handler.get_triangulation(),
@@ -601,13 +600,10 @@ compute_lagragian_force(const Mapping<dim, spacedim> &   mapping,
         &dof_handler_dim);
 
       fe_eval.reinit(dof_cell);
-      fe_eval_dim.reinit(dof_cell_dim);
+      fe_eval_dim.reinit(cell);
 
-      force_temp.reinit(fe_eval.dofs_per_cell);
+      force_temp.reinit(fe_eval_dim.dofs_per_cell);
       force_temp = 0.0;
-
-      std::cout << " fe_eval_dim dofs = " << fe_eval_dim.dofs_per_cell << " fe_eval dofs = " 
-            << fe_eval.dofs_per_cell << "size force = " << force_temp.size() << std::endl;
 
       std::vector<double>         curvature_values(fe_eval.dofs_per_cell);
       std::vector<Vector<double>> normal_values(fe_eval.dofs_per_cell,
@@ -620,29 +616,26 @@ compute_lagragian_force(const Mapping<dim, spacedim> &   mapping,
       for (const auto q : fe_eval.quadrature_point_indices())
         {
           //Tensor<1, spacedim, double> force_dimm;
-          std::vector<double> force_dimm(spacedim);
+          Vector<double> force_dim(spacedim);
 
           for (unsigned c = 0; c < spacedim; ++c)
           {
-            force_dimm[c] = -curvature_values[q] * normal_values[q][c] * fe_eval.JxW(q) *
+            force_dim[c] = -curvature_values[q] * normal_values[q][c] * fe_eval.JxW(q) *
                           surface_tension;
-              std::cout << "  force_dim = " << force_dimm[c] << std::endl;
-              std::cout << "curvature = " << curvature_values[q] << std::endl;
-              std::cout << "normal = " << normal_values[q][c] << std::endl;
-              std::cout << "JxW = " << fe_eval.JxW(q) << std::endl;
+              std::cout << "  force_dim = " << force_dim[c] << std::endl;
+             // std::cout << "curvature = " << curvature_values[q] << std::endl;
+             // std::cout << "normal = " << normal_values[q][c] << std::endl;
+             // std::cout << "JxW = " << fe_eval.JxW(q) << std::endl;
           }
           //TODO: not sure about comp or how to do it right
           const unsigned int comp =
             dof_handler_dim.get_fe().system_to_component_index(q).first;
-          force_temp[q] = force_dimm[comp]; 
+          force_temp[q] = force_dim[comp]; 
           std::cout << "q = " << q << "   spacedim = " << spacedim 
                     << "   comp = " << comp << std::endl;
-          std::cout << "force_temp = " << force_temp[q] << std::endl;
+          //std::cout << "force_temp = " << force_temp[q] << std::endl;
         }
-      std::cout << "set dof values " << std::endl;
-      //TODO: this does not fit, why????
       cell->set_dof_values(force_temp, force_vector);
-      std::cout << "done set dof values " << std::endl;
     }
 }
 
