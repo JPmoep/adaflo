@@ -390,8 +390,8 @@ compute_force_vector_sharp_interface_lagrange(
             {
               std::cout << "spacedim = " << i << std::endl;
               std::cout << "curvature = " << curvature_values[q] << std::endl;
-              std::cout << "normal = " << normal_values[q][i] << std::endl;
-              std::cout << "JxW = " << fe_eval.JxW(q)  << std::endl;
+              //std::cout << "normal = " << normal_values[q][i] << std::endl;
+              //std::cout << "JxW = " << fe_eval.JxW(q)  << std::endl;
 
               result[i] = -curvature_values[q] * normal_values[q][i] * fe_eval.JxW(q) *
                           surface_tension;
@@ -600,10 +600,11 @@ compute_lagragian_force(const Mapping<dim, spacedim> &   mapping,
         &dof_handler_dim);
 
       fe_eval.reinit(dof_cell);
-      fe_eval_dim.reinit(cell);
+      fe_eval_dim.reinit(dof_cell_dim);
 
       force_temp.reinit(fe_eval_dim.dofs_per_cell);
       std::cout << "size force_temp = " << force_temp.size() << std::endl;
+      std::cout << "size force_vec = " << force_vector.size() << std::endl;
       force_temp = 0.0;
 
       std::vector<double>         curvature_values(fe_eval.dofs_per_cell);
@@ -623,16 +624,18 @@ compute_lagragian_force(const Mapping<dim, spacedim> &   mapping,
             //TODO: not sure about comp or how to do it right
             const unsigned int comp =
                 dof_handler_dim.get_fe().component_to_system_index(c, q);
-            force_dim[c] = -curvature_values[q] * normal_values[q][c] * fe_eval.JxW(q) *
+            force_temp[comp] = -curvature_values[q] * normal_values[q][c] * fe_eval.JxW(q) *
                           surface_tension;
-            force_temp[comp] = force_dim[c];
-            std::cout << "q = " << q << "   spacedim = " << spacedim 
+            //force_dim[c] = -curvature_values[q] * normal_values[q][c] * fe_eval.JxW(q) *
+            //              surface_tension;
+           // force_temp[comp] = force_dim[c];
+            std::cout << "q = " << q << "   spacedim = " << c 
                     << "   comp = " << comp << std::endl;
-              std::cout << "force_dim = " << force_dim[c] << "  force_temp = " 
-                          << force_temp[comp] << std::endl;
-             // std::cout << "curvature = " << curvature_values[q] << std::endl;
-             // std::cout << "normal = " << normal_values[q][c] << std::endl;
-             // std::cout << "JxW = " << fe_eval.JxW(q) << std::endl;
+              std::cout  << "force_temp = " << force_temp[comp] << std::endl;
+             // std::cout << "force_dim = " << force_dim[c] << std::endl;
+              std::cout << "curvature = " << curvature_values[q] << std::endl;
+              std::cout << "normal = " << normal_values[q][c] << std::endl;
+              std::cout << "JxW = " << fe_eval.JxW(q) << std::endl;
           }          
           //std::cout << "force_temp = " << force_temp[q] << std::endl;
         }
@@ -813,6 +816,7 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
               result_2 =  (surface_tension * normal_l_values[q][i] * normal_l_values[q][i]) ;
             }
             curvature_l_values[q] = result_1/result_2;
+            //std::cout << "lagrange curvature = " <<  curvature_l_values[q] << std::endl;
           }
       }
 
@@ -954,6 +958,9 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
             phi_force.submit_value(surface_tension * curvature_l_values[q] *
                           phi_normal.get_value(q) * JxW[q],
                         q);         
+
+            std::cout << "phi curvature = " << phi_curvature.get_value(q) << std::endl;
+            std::cout << "lagrange curvature = " <<  curvature_l_values[q] << std::endl;
                         
           }
 
