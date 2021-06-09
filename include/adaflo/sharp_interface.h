@@ -1401,7 +1401,7 @@ private:
   {
     Assert(use_auxiliary_surface_mesh, ExcNotImplemented());
 
-   VectorTools::update_position_vector(navier_stokes_solver.time_stepping.step_size(),
+   VectorTools::update_position_vector_RK4(navier_stokes_solver.time_stepping.step_size(),
                                         navier_stokes_solver.get_dof_handler_u(),
                                         navier_stokes_solver.mapping,
                                         navier_stokes_solver.solution.block(0),
