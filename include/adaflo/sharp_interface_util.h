@@ -360,15 +360,13 @@ compute_force_vector_sharp_interface_lagrange(
 
     for (const auto &cell : tria_surface.active_cell_iterators())
       {
-        std::cout << "before TriaIterator"  << std::endl;
         TriaIterator<DoFCellAccessor<dim, spacedim, false>> dof_cell(&tria_surface,
                                                                      cell->level(),
                                                                      cell->index(),
                                                                      &surface_dofhandler);
-         std::cout << "inbetween TriaIterator"  << std::endl;
+        
         TriaIterator<DoFCellAccessor<dim, spacedim, false>> dof_cell_dim(
           &tria_surface, cell->level(), cell->index(), &surface_dofhandler_dim);
-          std::cout << "after TriaIterator"  << std::endl;
 
         fe_eval.reinit(dof_cell);
         fe_eval_dim.reinit(dof_cell_dim);
@@ -376,41 +374,29 @@ compute_force_vector_sharp_interface_lagrange(
         std::vector<double>         curvature_values(fe_eval.dofs_per_cell);
         std::vector<Vector<double>> normal_values(fe_eval.dofs_per_cell,
                                                   Vector<double>(spacedim));
-        //std::cout << "before getfunc values"  << std::endl;
+        
         fe_eval.get_function_values(curvature_vector, curvature_values);
-        //std::cout << "inbetween getfunc values"  << std::endl;
         fe_eval_dim.get_function_values(normal_vector, normal_values);
-        //std::cout << "after getfunc values"  << std::endl;
 
         for (const auto q : fe_eval_dim.quadrature_point_indices())
           {
-            std::cout << "quad point = " << q << std::endl;
             Tensor<1, spacedim, double> result;
             for (unsigned int i = 0; i < spacedim; ++i)
             {
-              std::cout << "spacedim = " << i << std::endl;
-              std::cout << "curvature = " << curvature_values[q] << std::endl;
-              //std::cout << "normal = " << normal_values[q][i] << std::endl;
-              //std::cout << "JxW = " << fe_eval.JxW(q)  << std::endl;
-
-              result[i] = -curvature_values[q] * normal_values[q][i] * fe_eval.JxW(q) *
+             result[i] = -curvature_values[q] * normal_values[q][i] * fe_eval.JxW(q) *
                           surface_tension;
 
               std::cout << "result = " << result[i]  << std::endl;
             // f = kappa * n * JxW * sigma
             }
-            std::cout << "quad point = " << fe_eval.quadrature_point(q)  << std::endl;
             integration_points.push_back(fe_eval.quadrature_point(q));
-            std::cout << "after integ point "  << std::endl;
             integration_values.push_back(result);
-            std::cout << "after integ value "  << std::endl;
           }
       }
   }
-std::cout << "before collection function "  << std::endl;
+
   const auto [cells, ptrs, weights, points] = collect_integration_points(
     dof_handler.get_triangulation(), mapping, integration_points, integration_values);
-    std::cout << "after collection function"  << std::endl;
 
   AffineConstraints<double> constraints; // TODO: use the right ones
 
@@ -418,14 +404,11 @@ std::cout << "before collection function "  << std::endl;
                                                          dof_handler.get_fe(),
                                                          update_values);
 
-  std::cout << "afterFEp"  << std::endl;
-
   std::vector<double>                  buffer;
   std::vector<types::global_dof_index> local_dof_indices;
 
   for (unsigned int i = 0; i < cells.size(); ++i)
     {
-      std::cout << "cell  = " << i << std::endl;
       typename DoFHandler<spacedim>::active_cell_iterator cell(
         &dof_handler.get_triangulation(), cells[i].first, cells[i].second, &dof_handler);
 
@@ -447,7 +430,6 @@ std::cout << "before collection function "  << std::endl;
 
       for (unsigned int q = 0; q < n_points; ++q)
       {
-        std::cout << "n_point = " << q << std::endl;
         phi_normal_force.submit_value(JxW[q], q);
      }
        
@@ -490,12 +472,12 @@ compute_normal(const Mapping<dim, spacedim> &   mapping,
           const unsigned int comp =
             dof_handler_dim.get_fe().system_to_component_index(q).first;
 
-          std::cout << "q = " << q << "   comp = " << comp 
+          /*std::cout << "q = " << q << "   comp = " << comp 
                   << "   normal_0 = " << normal[0]
                   << "   normal_1 = " << normal[1] << std::endl;
-
+          */
           normal_temp[q] = normal[comp];
-          std::cout << "normal = " << normal_temp[q]<< std::endl;
+          //std::cout << "normal = " << normal_temp[q]<< std::endl;
         }
       cell->set_dof_values(normal_temp, normal_vector);
     }
@@ -537,10 +519,13 @@ compute_curvature(const Mapping<dim, spacedim> &   mapping,
       fe_eval.reinit(cell);
       fe_eval_dim.reinit(dof_cell_dim);
 
-      curvature_temp.reinit(quadrature.size());
+      //curvature_temp.reinit(quadrature.size());
+      curvature_temp.reinit(fe_eval.dofs_per_cell);
 
+      //std::vector<std::vector<Tensor<1, spacedim, double>>> normal_gradients(
+      //  quadrature.size(), std::vector<Tensor<1, spacedim, double>>(spacedim));
       std::vector<std::vector<Tensor<1, spacedim, double>>> normal_gradients(
-        quadrature.size(), std::vector<Tensor<1, spacedim, double>>(spacedim));
+        fe_eval.dofs_per_cell, std::vector<Tensor<1, spacedim, double>>(spacedim));
 
       fe_eval_dim.get_function_gradients(normal_vector, normal_gradients);
 
@@ -606,8 +591,6 @@ compute_lagragian_force(const Mapping<dim, spacedim> &   mapping,
       fe_eval_dim.reinit(dof_cell_dim);
 
       force_temp.reinit(fe_eval_dim.dofs_per_cell);
-      std::cout << "size force_temp = " << force_temp.size() << std::endl;
-      std::cout << "size force_vec = " << force_vector.size() << std::endl;
       force_temp = 0.0;
 
       std::vector<double>         curvature_values(fe_eval.dofs_per_cell);
@@ -796,20 +779,13 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
 
         fe_l_eval.reinit(dof_cell);
         fe_l_eval_dim.reinit(dof_cell_dim);
-        //std::cout << "dofs feval_dim = " << fe_l_eval_dim.dofs_per_cell
-        //        << "dofs feval = " << fe_l_eval.dofs_per_cell
-        //        << std::endl;
-       // std::cout << "dofs force = " << force_lagrange_vector.size() << std::endl;
-    //TODO: check size!!!!!!!!!!
+
         force_l_values.resize(fe_l_eval.dofs_per_cell, Vector<double>(spacedim));
         normal_l_values.resize(fe_l_eval.dofs_per_cell, Vector<double>(spacedim));
         curvature_l_values.resize(fe_l_eval.dofs_per_cell);
 
-        //std::cout << "before get func values force " << std::endl;
        fe_l_eval_dim.get_function_values(force_lagrange_vector, force_l_values);
-       // std::cout << "after get func values force " << std::endl;
-        fe_l_eval_dim.get_function_values(normal_lagrange_vector, normal_l_values);
-        //std::cout << "after get func values normal " << std::endl;
+       fe_l_eval_dim.get_function_values(normal_lagrange_vector, normal_l_values);
 
         for (const auto q : fe_l_eval_dim.quadrature_point_indices())
           {
@@ -956,12 +932,12 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
                       << phi_normal.get_value(q)[1] <<std::endl;
                       */
             Assert(phi_normal.get_value(q).norm() > 0, ExcNotImplemented());
-            const auto normal = phi_normal.get_value(q) / phi_normal.get_value(q).norm();
-            phi_force.submit_value(surface_tension * normal *
-                                     phi_curvature.get_value(q) * JxW[q],
-                                   q);
-            const auto force_euler =  surface_tension * normal * phi_curvature.get_value(q) * JxW[q];
-            const auto force_hybrid = surface_tension * curvature_l_values[q] *phi_normal.get_value(q) * JxW[q];
+            //const auto normal = phi_normal.get_value(q) / phi_normal.get_value(q).norm();
+            //phi_force.submit_value(surface_tension * normal *
+             //                        phi_curvature.get_value(q) * JxW[q],
+             //                      q);
+            //const auto force_euler =  surface_tension * normal * phi_curvature.get_value(q) * JxW[q];
+            //const auto force_hybrid = surface_tension * curvature_l_values[q] *phi_normal.get_value(q) * JxW[q];
             //TODO: does not fit with typ!
             phi_force.submit_value(surface_tension * curvature_l_values[q] *
                           phi_normal.get_value(q) * JxW[q],

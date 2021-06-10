@@ -558,8 +558,6 @@ public:
                                      surface_coordinates_vector);
     surface_coordinates_vector.zero_out_ghost_values();
 
-    auto surface_coordinates_vector_old = surface_coordinates_vector;
-
     euler_mapping = std::make_shared<MappingFEField<dim - 1, dim, VectorType>>(
       surface_dofhandler_dim, surface_coordinates_vector);
 
@@ -838,7 +836,9 @@ public:
     euler_vector.update_ghost_values();
 
     VectorTools::
-      get_position_vector(MappingQGeneric<dim - 1, dim>(4 /*TODO: this is a high number to well represent curved surfaces, the actual value is not that relevant*/), euler_dofhandler_dim, euler_vector);
+      get_position_vector(MappingQGeneric<dim - 1, dim>(4 /*TODO: this is a high number to well represent curved surfaces, the actual value is not that relevant*/), 
+                          euler_dofhandler_dim, 
+                          euler_vector);
     euler_vector.zero_out_ghost_values();
     euler_mapping =
       std::make_shared<MappingFEField<dim - 1, dim, VectorType>>(euler_dofhandler_dim,
@@ -961,9 +961,7 @@ public:
 
         DataOut<dim - 1, dim> data_out;
         data_out.set_flags(flags);
-        //data_out.attach_dof_handler(euler_dofhandler_dim);
-        //data_out.add_data_vector(euler_dofhandler, curvature_l_vector, "lagrange curvature");
-        //data_out.add_data_vector(euler_dofhandler_dim, normal_l_vector, "normal");
+        data_out.attach_dof_handler(euler_dofhandler_dim);
         data_out.add_data_vector(euler_dofhandler, curvature_l_vector, "lagrange_curvature");
         data_out.add_data_vector(euler_dofhandler_dim, normal_l_vector, "lagrange_normal");
         data_out.add_data_vector(euler_dofhandler_dim, surface_force_lagrange_vector, "lagrange_force");
