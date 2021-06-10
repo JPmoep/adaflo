@@ -154,7 +154,7 @@ namespace dealii
       levelset_vector.update_ghost_values();
       normal_vector.update_ghost_values();
 
-      for (int j = 0; j < 3 /*TODO: make parameter*/; ++j)
+      for (int j = 0; j < 1 /*TODO: make parameter*/; ++j)
         {
           std::vector<Point<spacedim>> evaluation_points;
           for (const auto &cell : euler_dofhandler.active_cell_iterators())
@@ -222,6 +222,8 @@ namespace dealii
                               << "    x_alt = " << fe_eval.quadrature_point(q)[comp] 
                               << " phi = " << phi << "  normal = " << normal[comp] << std::endl;
                               */
+
+                  // TODO: include iteration for under resolved regions and for boundary of computational domain
                   }
                   counter++;
                 }
