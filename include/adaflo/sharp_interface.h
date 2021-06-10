@@ -961,10 +961,12 @@ public:
 
         DataOut<dim - 1, dim> data_out;
         data_out.set_flags(flags);
-        data_out.attach_dof_handler(euler_dofhandler_dim);
-        data_out.add_data_vector(euler_dofhandler, curvature_l_vector, "curvature");
-        data_out.add_data_vector(euler_dofhandler_dim, normal_l_vector, "normal");
-        data_out.add_data_vector(euler_dofhandler_dim, surface_force_lagrange_vector, "force");
+        //data_out.attach_dof_handler(euler_dofhandler_dim);
+        //data_out.add_data_vector(euler_dofhandler, curvature_l_vector, "lagrange curvature");
+        //data_out.add_data_vector(euler_dofhandler_dim, normal_l_vector, "normal");
+        data_out.add_data_vector(euler_dofhandler, curvature_l_vector, "lagrange_curvature");
+        data_out.add_data_vector(euler_dofhandler_dim, normal_l_vector, "lagrange_normal");
+        data_out.add_data_vector(euler_dofhandler_dim, surface_force_lagrange_vector, "lagrange_force");
 
         data_out.build_patches(
           *euler_mapping,

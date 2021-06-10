@@ -551,6 +551,9 @@ compute_curvature(const Mapping<dim, spacedim> &   mapping,
           for (unsigned c = 0; c < spacedim; ++c)
             curvature += normal_gradients[q][c][c];
 
+          std::cout << "q = " << q << " : normal gradients = " << normal_gradients[q][0][0]
+                   << normal_gradients[q][0][1] << normal_gradients[q][1][0] 
+                   << normal_gradients[q][1][1] << "  curvature = " << curvature << std::endl;
           curvature_temp[q] = curvature;
         }
 
@@ -797,8 +800,8 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
         //        << "dofs feval = " << fe_l_eval.dofs_per_cell
         //        << std::endl;
        // std::cout << "dofs force = " << force_lagrange_vector.size() << std::endl;
-
-        force_l_values.resize(fe_l_eval_dim.dofs_per_cell, Vector<double>(spacedim));
+    //TODO: check size!!!!!!!!!!
+        force_l_values.resize(fe_l_eval.dofs_per_cell, Vector<double>(spacedim));
         normal_l_values.resize(fe_l_eval.dofs_per_cell, Vector<double>(spacedim));
         curvature_l_values.resize(fe_l_eval.dofs_per_cell);
 
@@ -814,9 +817,13 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
             {
               result_1 = (force_l_values[q][i] * normal_l_values[q][i]);
               result_2 =  (surface_tension * normal_l_values[q][i] * normal_l_values[q][i]) ;
+              std::cout << "lagrange force = " <<  force_l_values[q][i] << std::endl;
+              std::cout << "lagrange normal = " <<  normal_l_values[q][i] << std::endl;
             }
             curvature_l_values[q] = result_1/result_2;
-            //std::cout << "lagrange curvature = " <<  curvature_l_values[q] << std::endl;
+            std::cout << "lagrange curvature = " <<  curvature_l_values[q] 
+                      << "result 1 = " << result_1 
+                      << "result 2 = " << result_2 << std::endl;
           }
       }
 
@@ -949,19 +956,21 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
                       << phi_normal.get_value(q)[1] <<std::endl;
                       */
             Assert(phi_normal.get_value(q).norm() > 0, ExcNotImplemented());
-            /*const auto normal = phi_normal.get_value(q) / phi_normal.get_value(q).norm();
+            const auto normal = phi_normal.get_value(q) / phi_normal.get_value(q).norm();
             phi_force.submit_value(surface_tension * normal *
                                      phi_curvature.get_value(q) * JxW[q],
                                    q);
-             */ 
+            const auto force_euler =  surface_tension * normal * phi_curvature.get_value(q) * JxW[q];
+            const auto force_hybrid = surface_tension * curvature_l_values[q] *phi_normal.get_value(q) * JxW[q];
             //TODO: does not fit with typ!
             phi_force.submit_value(surface_tension * curvature_l_values[q] *
                           phi_normal.get_value(q) * JxW[q],
-                        q);         
-
-            std::cout << "phi curvature = " << phi_curvature.get_value(q) << std::endl;
-            std::cout << "lagrange curvature = " <<  curvature_l_values[q] << std::endl;
-                        
+                        q);
+    
+           /* std::cout << "force euler = " << force_euler << "   force hybrid =" << force_hybrid << std::endl;
+            std::cout << "phi curvature = " << phi_curvature.get_value(q) 
+                      << "lagrange curvature = " <<  curvature_l_values[q] << std::endl;
+            */            
           }
 
         // integrate_scatter force
