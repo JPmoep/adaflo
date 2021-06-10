@@ -386,7 +386,7 @@ compute_force_vector_sharp_interface_lagrange(
              result[i] = -curvature_values[q] * normal_values[q][i] * fe_eval.JxW(q) *
                           surface_tension;
 
-              std::cout << "result = " << result[i]  << std::endl;
+             // std::cout << "result = " << result[i]  << std::endl;
             // f = kappa * n * JxW * sigma
             }
             integration_points.push_back(fe_eval.quadrature_point(q));
@@ -454,7 +454,7 @@ compute_normal(const Mapping<dim, spacedim> &   mapping,
   FEValues<dim, spacedim> fe_eval_dim(mapping,
                                       dof_handler_dim.get_fe(),
                                       dof_handler_dim.get_fe().get_unit_support_points(),
-                                      update_normal_vectors | update_gradients);
+                                      update_normal_vectors | update_gradients | update_JxW_values);
 
   Vector<double> normal_temp;
 
@@ -472,10 +472,13 @@ compute_normal(const Mapping<dim, spacedim> &   mapping,
           const unsigned int comp =
             dof_handler_dim.get_fe().system_to_component_index(q).first;
 
-          /*std::cout << "q = " << q << "   comp = " << comp 
-                  << "   normal_0 = " << normal[0]
-                  << "   normal_1 = " << normal[1] << std::endl;
-          */
+          std::cout << "q = " << q << "   comp = " << comp << " : normal values = " << normal[0] << " "
+                    << normal[1] << 
+            /*        "   normal gradients = " << normal_gradients[q][0][0] 
+                    << " " << normal_gradients[q][0][1] << " " << normal_gradients[q][1][0] 
+                    << " " << normal_gradients[q][1][1] <<*/  std::endl;
+          std::cout << "    JxW fe eval dim = " << fe_eval_dim.JxW(q) << std::endl;
+          
           normal_temp[q] = normal[comp];
           //std::cout << "normal = " << normal_temp[q]<< std::endl;
         }
@@ -499,12 +502,14 @@ compute_curvature(const Mapping<dim, spacedim> &   mapping,
 {
   FEValues<dim, spacedim> fe_eval(mapping,
                                   dof_handler.get_fe(),
+                                  //dof_handler_dim.get_fe().get_unit_support_points(),
                                   quadrature,
-                                  update_gradients);
+                                  update_gradients | update_JxW_values);
   FEValues<dim, spacedim> fe_eval_dim(mapping,
                                       dof_handler_dim.get_fe(),
+                                      //dof_handler_dim.get_fe().get_unit_support_points(),
                                       quadrature,
-                                      update_gradients);
+                                      update_values | update_gradients | update_JxW_values);
 
   Vector<double> curvature_temp;
 
@@ -522,23 +527,27 @@ compute_curvature(const Mapping<dim, spacedim> &   mapping,
       //curvature_temp.reinit(quadrature.size());
       curvature_temp.reinit(fe_eval.dofs_per_cell);
 
-      //std::vector<std::vector<Tensor<1, spacedim, double>>> normal_gradients(
-      //  quadrature.size(), std::vector<Tensor<1, spacedim, double>>(spacedim));
       std::vector<std::vector<Tensor<1, spacedim, double>>> normal_gradients(
-        fe_eval.dofs_per_cell, std::vector<Tensor<1, spacedim, double>>(spacedim));
+        quadrature.size(), std::vector<Tensor<1, spacedim, double>>(spacedim));
+     // std::vector<std::vector<Tensor<1, spacedim, double>>> normal_gradients(
+     //  fe_eval.dofs_per_cell, std::vector<Tensor<1, spacedim, double>>(spacedim));
+      std::vector<Vector<double>> normal_values(fe_eval.dofs_per_cell, Vector<double>(spacedim));
 
       fe_eval_dim.get_function_gradients(normal_vector, normal_gradients);
+      fe_eval_dim.get_function_values(normal_vector, normal_values);
 
-      for (const auto q : fe_eval_dim.quadrature_point_indices())
+      for (const auto q : fe_eval.quadrature_point_indices())
         {
           double curvature = 0.0;
 
           for (unsigned c = 0; c < spacedim; ++c)
             curvature += normal_gradients[q][c][c];
 
-          std::cout << "q = " << q << " : normal gradients = " << normal_gradients[q][0][0]
-                   << normal_gradients[q][0][1] << normal_gradients[q][1][0] 
-                   << normal_gradients[q][1][1] << "  curvature = " << curvature << std::endl;
+          std::cout << "q = " << q << " : normal values = " << normal_values[q][0] << " "
+                    << normal_values[q][1] << "   normal gradients = " << normal_gradients[q][0][0] 
+                    << " " << normal_gradients[q][0][1] << " " << normal_gradients[q][1][0] 
+                    << " " << normal_gradients[q][1][1] << "  curvature = " << curvature << std::endl;
+          std::cout << "JxW = " << fe_eval.JxW(q) << "    JxW fe eval dim = " << fe_eval_dim.JxW(q) << std::endl;
           curvature_temp[q] = curvature;
         }
 
@@ -564,16 +573,17 @@ compute_lagragian_force(const Mapping<dim, spacedim> &   mapping,
   FEValues<dim, spacedim> fe_eval(mapping,
                                   dof_handler.get_fe(),
                                   quadrature,
-//                                  dof_handler.get_fe().get_unit_support_points(),
+                                  //dof_handler.get_fe().get_unit_support_points(),
                                   update_values | update_JxW_values );
   FEValues<dim, spacedim> fe_eval_dim(mapping,
                                       dof_handler_dim.get_fe(),
-                                      dof_handler_dim.get_fe().get_unit_support_points(),
-                                      update_values | update_normal_vectors);
+                                      quadrature,
+                                      //dof_handler_dim.get_fe().get_unit_support_points(),
+                                      update_values | update_normal_vectors | update_JxW_values);
 
   Vector<double>  force_temp;
 
-  for (const auto &cell : dof_handler_dim.active_cell_iterators())
+  for (const auto &cell : dof_handler.active_cell_iterators())
     {
       TriaIterator<DoFCellAccessor<dim, spacedim, false>> dof_cell(
         &dof_handler.get_triangulation(),
@@ -621,7 +631,7 @@ compute_lagragian_force(const Mapping<dim, spacedim> &   mapping,
              // std::cout << "force_dim = " << force_dim[c] << std::endl;
               std::cout << "curvature = " << curvature_values[q] << std::endl;
               std::cout << "normal = " << normal_values[q][c] << std::endl;
-              std::cout << "JxW = " << fe_eval.JxW(q) << std::endl;
+              std::cout << "JxW = " << fe_eval.JxW(q) << "    JxW fe eval dim = " << fe_eval_dim.JxW(q) << std::endl;
           }          
           //std::cout << "force_temp = " << force_temp[q] << std::endl;
         }
@@ -793,13 +803,13 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
             {
               result_1 = (force_l_values[q][i] * normal_l_values[q][i]);
               result_2 =  (surface_tension * normal_l_values[q][i] * normal_l_values[q][i]) ;
-              std::cout << "lagrange force = " <<  force_l_values[q][i] << std::endl;
-              std::cout << "lagrange normal = " <<  normal_l_values[q][i] << std::endl;
+              //std::cout << "lagrange force = " <<  force_l_values[q][i] << std::endl;
+              //std::cout << "lagrange normal = " <<  normal_l_values[q][i] << std::endl;
             }
             curvature_l_values[q] = result_1/result_2;
-            std::cout << "lagrange curvature = " <<  curvature_l_values[q] 
-                      << "result 1 = " << result_1 
-                      << "result 2 = " << result_2 << std::endl;
+            //std::cout << "lagrange curvature = " <<  curvature_l_values[q] 
+             //         << "result 1 = " << result_1 
+              //        << "result 2 = " << result_2 << std::endl;
           }
       }
 
