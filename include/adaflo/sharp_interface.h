@@ -824,7 +824,7 @@ public:
     , euler_dofhandler_dim(surface_mesh)
   {
     // Degree for FE at surface mesh
-    const unsigned int fe_degree = 1;
+    const unsigned int fe_degree = 2; //1
 
     FESystem<dim - 1, dim> surface_fe_dim(FE_Q<dim - 1, dim>(fe_degree), dim);
     euler_dofhandler_dim.distribute_dofs(surface_fe_dim);
@@ -963,6 +963,7 @@ public:
         data_out.set_flags(flags);
         data_out.attach_dof_handler(euler_dofhandler_dim);
         data_out.add_data_vector(euler_dofhandler, curvature_l_vector, "lagrange_curvature");
+        data_out.add_data_vector(euler_dofhandler, curvature_hybrid_vector, "hybrid_curvature");
         data_out.add_data_vector(euler_dofhandler_dim, normal_l_vector, "lagrange_normal");
         data_out.add_data_vector(euler_dofhandler_dim, surface_force_lagrange_vector, "lagrange_force");
 
@@ -1444,6 +1445,7 @@ private:
       surface_force_lagrange_vector.reinit(euler_dofhandler_dim.n_dofs());
       normal_l_vector.reinit(euler_dofhandler_dim.n_dofs());
       curvature_l_vector.reinit(euler_dofhandler.n_dofs());
+      curvature_hybrid_vector.reinit(euler_dofhandler.n_dofs());
 
       compute_normal(*euler_mapping, euler_dofhandler_dim, normal_l_vector);
       compute_curvature(*euler_mapping,
@@ -1456,24 +1458,12 @@ private:
       compute_lagragian_force(*euler_mapping,
                         euler_dofhandler_dim,
                         euler_dofhandler,
-                        QGaussLobatto<dim - 1>(euler_dofhandler.get_fe().degree + 1),
+                        QGauss<dim - 1>(euler_dofhandler_dim.get_fe().degree + 1),
+                        //QGaussLobatto<dim - 1>(euler_dofhandler.get_fe().degree + 1),
                         navier_stokes_solver.get_parameters().surface_tension,
                         normal_l_vector,
                         curvature_l_vector,
                         surface_force_lagrange_vector);
-
-      /*compute_force_vector_sharp_interface_lagrange(
-        *euler_mapping,
-        euler_dofhandler,
-        euler_dofhandler_dim,
-        QGauss<dim - 1>(euler_dofhandler_dim.get_fe().degree + 1),
-        navier_stokes_solver.mapping,
-        navier_stokes_solver.get_dof_handler_u(),
-        navier_stokes_solver.get_parameters().surface_tension,
-        normal_l_vector,
-        curvature_l_vector,
-        navier_stokes_solver.user_rhs.block(0));
-        */
 
       compute_hybrid_force_vector_sharp_interface(
         euler_dofhandler_dim.get_triangulation(),
@@ -1488,6 +1478,7 @@ private:
         level_set_solver.get_normal_vector(),
         normal_l_vector,
         level_set_solver.get_curvature_vector(),
+        curvature_hybrid_vector,
         surface_force_lagrange_vector,
         navier_stokes_solver.user_rhs.block(0));
 
@@ -1598,6 +1589,7 @@ private:
 
   VectorType                             normal_l_vector;
   VectorType                             curvature_l_vector;
+  VectorType                             curvature_hybrid_vector;
   VectorType                             surface_force_lagrange_vector;
 };
 
