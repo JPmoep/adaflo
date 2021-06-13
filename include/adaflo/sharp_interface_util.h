@@ -154,7 +154,7 @@ namespace dealii
       levelset_vector.update_ghost_values();
       normal_vector.update_ghost_values();
 
-      for (int j = 0; j < 1 /*TODO: make parameter*/; ++j)
+      for (int j = 0; j < 15 /*TODO: make parameter*/; ++j)
         {
           std::vector<Point<spacedim>> evaluation_points;
           for (const auto &cell : euler_dofhandler.active_cell_iterators())
@@ -199,38 +199,62 @@ namespace dealii
               for (const auto q : fe_eval.quadrature_point_indices())
                 {
                   const auto phi = evaluation_values_ls[counter];
+                  std::cout << "q = " << q << "   phi = " << phi << std::endl;
                   double distance = (1 - phi * phi) > 1e-2 ?
                         eps_used * std::log((1. + phi) / (1. - phi)) :
                          0;
-                  
-                  Point<spacedim> normal;
-                  
-                  for (unsigned int comp = 0; comp < spacedim; ++comp)
-                    normal[comp] = evaluation_values_normal[comp][counter];
-                  
-                  if(normal.norm() > 1e-10)
-                      normal/=normal.norm();
 
-                  //if(phi[q] < 1.0 && phi[q] > -1.0)
-                  for (unsigned int comp = 0; comp < spacedim; ++comp)
+                  // TODO: include iteration for boundary of computational domain
+                  if( j == 0 || abs(phi) >= 1 /*TODO value: dependent on mesh size? eg. 3dx*/)      //if(phi[q] < 1.0 && phi[q] > -1.0)
                   {
-                    temp[euler_dofhandler.get_fe().component_to_system_index(comp, q)] = 
-                            fe_eval.quadrature_point(q)[comp]  - normal[comp] * distance;
-                    /*std::cout.precision(8);
-                    std::cout << "comp = "<< comp << " : " << std::endl;
-                    std::cout << "x_neu  = " << temp[euler_dofhandler.get_fe().component_to_system_index(comp, q)] 
-                              << "    x_alt = " << fe_eval.quadrature_point(q)[comp] 
-                              << " phi = " << phi << "  normal = " << normal[comp] << std::endl;
-                              */
+                    Point<spacedim> normal;
+                    double lambda = 1.0;
+                    // halve lambda for each iteration
+                    if (j > 0)
+                    {
+                      std::cout << " j>0:   phi = " << phi << std::endl;
+                      for(int i = 0; i < j; ++i)
+                        lambda = lambda/2;
+                    }
+                    else if(j == 14)
+                    {
+                      // TODO: Abbruchkriterium and delete q if after 15th iteration still outside "band"
+                    }
 
-                  // TODO: include iteration for under resolved regions and for boundary of computational domain
+                    for (unsigned int comp = 0; comp < spacedim; ++comp)
+                      normal[comp] = evaluation_values_normal[comp][counter];
+                    
+                    if(normal.norm() > 1e-10)
+                        normal/=normal.norm();
+
+                    for (unsigned int comp = 0; comp < spacedim; ++comp)
+                    {
+                      temp[euler_dofhandler.get_fe().component_to_system_index(comp, q)] = 
+                              fe_eval.quadrature_point(q)[comp]  - lambda * normal[comp] * distance;
+                      /*std::cout.precision(8);
+                      std::cout << "comp = "<< comp << " : " << std::endl;
+                      std::cout << "x_neu  = " << temp[euler_dofhandler.get_fe().component_to_system_index(comp, q)] 
+                                << "    x_alt = " << fe_eval.quadrature_point(q)[comp] 
+                                << " phi = " << phi << "  normal = " << normal[comp] << std::endl;
+                                */
+                      
+                      // check if point is outside domain and if so then project it back to the
+                      // domain
+                      //TODO: get boundary points?!
+                     /* if (temp[comp] < boundary_points.first[comp])
+                        temp[comp] = boundary_points.first[comp];
+                      else if (temp[comp] > boundary_points.second[comp])
+                        temp[comp] = boundary_points.second[comp];
+                       */ 
+                    }
+                    counter++;
                   }
-                  counter++;
+
                 }
                 
               cell->set_dof_values(temp, euler_coordinates_vector_temp);
             }
-      
+            
         	  euler_coordinates_vector = euler_coordinates_vector_temp;
           }
     }

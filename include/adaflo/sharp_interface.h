@@ -679,6 +679,7 @@ private:
                                         surface_dofhandler_dim,
                                         *euler_mapping,
                                         surface_coordinates_vector);
+
   }
 
   void
