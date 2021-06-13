@@ -1455,7 +1455,7 @@ private:
                         normal_l_vector,
                         curvature_l_vector);
 
-      compute_lagragian_force(*euler_mapping,
+      compute_local_lagragian_force(*euler_mapping,
                         euler_dofhandler_dim,
                         euler_dofhandler,
                         QGauss<dim - 1>(euler_dofhandler_dim.get_fe().degree + 1),
