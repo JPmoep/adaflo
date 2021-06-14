@@ -824,7 +824,7 @@ public:
     , euler_dofhandler_dim(surface_mesh)
   {
     // Degree for FE at surface mesh
-    const unsigned int fe_degree = 2; //1
+    const unsigned int fe_degree = 1; //1
 
     FESystem<dim - 1, dim> surface_fe_dim(FE_Q<dim - 1, dim>(fe_degree), dim);
     euler_dofhandler_dim.distribute_dofs(surface_fe_dim);
