@@ -627,7 +627,7 @@ compute_local_lagragian_force(const Mapping<dim, spacedim> &   mapping,
             //TODO: not sure about comp or how to do it right
             const unsigned int comp =
                 dof_handler_dim.get_fe().component_to_system_index(c, q);
-            force_temp[comp] = -curvature_values[q] * normal_values[q][c] * surface_tension;
+            force_temp[comp] = curvature_values[q] * normal_values[q][c] * surface_tension;
            /* std::cout << "q = " << q << "   spacedim = " << c 
                     << "   comp = " << comp << std::endl;
               std::cout  << "force_temp = " << force_temp[comp] << std::endl;
@@ -766,6 +766,7 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
     Vector<double>         curvature_hybrid_values;
     std::vector<Vector<double>> normal_l_values, force_l_values;
     double                      result_1, result_2;
+    std::vector<T> integration_values;
 
     FEValues<dim, spacedim> fe_l_eval(surface_mapping,
                                     surface_dofhandler.get_fe(),
@@ -783,6 +784,10 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
 
     for (const auto &cell : surface_dofhandler.active_cell_iterators())
       {
+        //adapt from below
+        if (cell->is_locally_owned() == false)
+          continue;
+
         //TODO: right place?
         // for surface mesh normal and force handling
         TriaIterator<DoFCellAccessor<dim, spacedim, false>> dof_cell(&surface_dofhandler.get_triangulation(),
@@ -811,9 +816,12 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
             for (unsigned int i = 0; i < spacedim; ++i)
             {
               result_1 += (force_l_values[q][i] * normal_l_values[q][i]);
-              result_2 +=  (surface_tension * normal_l_values[q][i] * normal_l_values[q][i]) ;
+              result_2 +=  (normal_l_values[q][i] * normal_l_values[q][i]) ;
             }
-            curvature_hybrid_values[q] = result_1/result_2;
+            curvature_hybrid_values[q] = result_1/(surface_tension * result_2);
+            std::cout << "hybrid curvature = " << curvature_hybrid_values[q] 
+                      << "  JxW = " << fe_l_eval.JxW(q) << std::endl;
+            integration_values.push_back(fe_l_eval.JxW(q) * curvature_hybrid_values[q]);
           }
           cell->set_dof_values(curvature_hybrid_values, curvature_hybrid_vector);
       }
@@ -843,7 +851,7 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
   Utilities::MPI::RemotePointEvaluation<spacedim, spacedim> eval;
   eval.reinit(integration_points, dof_handler.get_triangulation(), mapping);
 
-  std::vector<T> integration_values;
+ /* std::vector<T> integration_values;
   {
     //TODO: combine this with the one above?
     FE_Nothing<dim, spacedim> dummy;
@@ -861,9 +869,14 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
         fe_eval.reinit(cell);
 
         for (const auto q : fe_eval.quadrature_point_indices())
+        {
+          std::cout << "hybrid curvature = " << curvature_hybrid_values[q] << std::endl;
           integration_values.push_back(fe_eval.JxW(q) * curvature_hybrid_values[q]);
+        }
+        
       }
   }
+  */
 
   const auto integration_function = [&](const auto &values, const auto &cell_data) {
     AffineConstraints<double> constraints; // TODO: use the right ones
@@ -945,7 +958,7 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
           {
             Assert(phi_normal.get_value(q).norm() > 0, ExcNotImplemented());
             const auto normal = phi_normal.get_value(q) / phi_normal.get_value(q).norm();
-           // JxW = JxW *curvature_hybrid
+           // curvature_x_JxW = JxW *curvature_hybrid
             const auto force_hybrid = surface_tension  * normal * curvature_x_JxW[q]; 
             phi_force.submit_value(force_hybrid, q);         
           }
