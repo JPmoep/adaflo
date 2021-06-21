@@ -504,18 +504,19 @@ compute_curvature(const Mapping<dim, spacedim> &   mapping,
 {
   FEValues<dim, spacedim> fe_eval(mapping,
                                   dof_handler.get_fe(),
-                                  dof_handler.get_fe().get_unit_support_points(),
-                                  //quadrature,
+                                  //dof_handler.get_fe().get_unit_support_points(),
+                                  quadrature,
                                   update_gradients | update_quadrature_points | update_JxW_values);
   FEValues<dim, spacedim> fe_eval_dim(mapping,
                                       dof_handler_dim.get_fe(),
-                                      dof_handler_dim.get_fe().get_unit_support_points(),
-                                      //quadrature,
+                                      //dof_handler_dim.get_fe().get_unit_support_points(),
+                                      quadrature,
                                       update_values | update_gradients | update_quadrature_points | update_JxW_values);
   
  // std::cout << "curvature: fe eval: " << fe_eval.get_fe().has_support_points() << "  fe eval dim =" << fe_eval_dim.get_fe().has_support_points() << std::endl;
 
   Vector<double> curvature_temp;
+  std::vector<double> curvature_last_cell;
 
   for (const auto &cell : dof_handler.active_cell_iterators())
     {
@@ -529,12 +530,13 @@ compute_curvature(const Mapping<dim, spacedim> &   mapping,
       fe_eval_dim.reinit(dof_cell_dim);
 
       //curvature_temp.reinit(quadrature.size());
-      curvature_temp.reinit(fe_eval.dofs_per_cell);
+      //curvature_temp.reinit(fe_eval.dofs_per_cell);
+      //force_l_values.resize(quadrature.size(), Vector<double>(spacedim));
 
-     // std::vector<std::vector<Tensor<1, spacedim, double>>> normal_gradients(
-     //   quadrature.size(), std::vector<Tensor<1, spacedim, double>>(spacedim));
       std::vector<std::vector<Tensor<1, spacedim, double>>> normal_gradients(
-       fe_eval.dofs_per_cell, std::vector<Tensor<1, spacedim, double>>(spacedim));
+        quadrature.size(), std::vector<Tensor<1, spacedim, double>>(spacedim));
+     // std::vector<std::vector<Tensor<1, spacedim, double>>> normal_gradients(
+      // fe_eval.dofs_per_cell, std::vector<Tensor<1, spacedim, double>>(spacedim));
 
       std::vector<Vector<double>> normal_values(fe_eval.dofs_per_cell, Vector<double>(spacedim));
 
@@ -542,21 +544,162 @@ compute_curvature(const Mapping<dim, spacedim> &   mapping,
       fe_eval_dim.get_function_values(normal_vector, normal_values);
 
       for (const auto q : fe_eval.quadrature_point_indices())
+      //for (const auto q : fe_eval_dim.quadrature_point_indices())
         {
           double curvature = 0.0;
 
           for (unsigned c = 0; c < spacedim; ++c)
             curvature += normal_gradients[q][c][c];
-
-         /* std::cout << "q = " << q << " : normal values = " << normal_values[q][0] << " "
-                    << normal_values[q][1] << "   normal gradients = " << normal_gradients[q][0][0] 
-                    << " " << normal_gradients[q][0][1] << " " << normal_gradients[q][1][0] 
-                    << " " << normal_gradients[q][1][1] << "  curvature = " << curvature << std::endl;
-          */
-          //std::cout << "JxW = " << fe_eval.JxW(q) << "    JxW fe eval dim = " << fe_eval_dim.JxW(q) << std::endl;
-          curvature_temp[q] = curvature;
+          
+          //curvature_temp[q] = curvature;
+         // std::cout << "here" << std::endl;
+          curvature_last_cell.push_back(curvature);
+         // std::cout << "or here" << std::endl;
         }
 
+      //cell->set_dof_values(curvature_temp, curvature_vector);
+    }
+
+  unsigned int counter = 0;
+  //TODO: only working for 2 quad points in each cell
+   // 0 = direct left or right neighbor cell quad point, not in same cell
+   // 1 = central, left and right quad point
+   // 2 = two direct left or right neighbor cell quad points, not the one in same cell
+   // 3 = from left and right cell nearest quad point
+  unsigned int method = 2;
+
+    for (const auto &cell : dof_handler.active_cell_iterators())
+    {
+      TriaIterator<DoFCellAccessor<dim, spacedim, false>> dof_cell_dim(
+        &dof_handler_dim.get_triangulation(),
+        cell->level(),
+        cell->index(),
+        &dof_handler_dim);
+
+      fe_eval.reinit(cell);
+      fe_eval_dim.reinit(dof_cell_dim);
+      curvature_temp.reinit(quadrature.size());
+      
+      for (const auto q : fe_eval.quadrature_point_indices())
+      //for (const auto q : fe_eval_dim.quadrature_point_indices() )
+        {
+         // std::cout << "for loop" << std::endl;
+          double curvature = 0.0;
+          if(counter == 0)
+          {
+            std::cout << "n points = " << fe_eval.n_quadrature_points << std::endl;
+            if(method == 0)
+              // leftside
+              curvature = (curvature_last_cell.back() + curvature_last_cell[counter])/2;
+            else if (method == 1)
+              //central
+              curvature = (curvature_last_cell.back() + curvature_last_cell[counter] + curvature_last_cell[counter+1])/3;
+            else if (method == 2)
+              // double leftside
+              curvature = (curvature_last_cell.back() + curvature_last_cell[curvature_last_cell.size()-2]+ curvature_last_cell[counter])/3;
+            else if (method == 3)
+              // left- and rightside
+              curvature = (curvature_last_cell.back() + curvature_last_cell[counter]+ curvature_last_cell[counter+2])/3;
+            
+            std::cout << "  curvature last = " << curvature_last_cell.back() 
+                      << "  curvature = " << curvature_last_cell[0] 
+                      << "  end curvature = " <<  curvature << std::endl;
+          }
+          else if (counter == 1)
+          {
+            if(method == 0)
+                //rightside
+                curvature = (curvature_last_cell[counter] + curvature_last_cell[counter+1])/2;
+              else if(method == 1)
+                //central
+                curvature = (curvature_last_cell[counter-1] + curvature_last_cell[counter] + curvature_last_cell[counter+1])/3;
+              else if (method == 2)
+                // double rightside
+                curvature = (curvature_last_cell[counter] + curvature_last_cell[counter+1] + curvature_last_cell[counter+2])/3;
+              else if (method == 3)
+                // left- and rightside
+                curvature = (curvature_last_cell.back() + curvature_last_cell[counter]+ curvature_last_cell[counter+1])/3;  
+          }
+          else if(counter == (curvature_last_cell.size() - 2))
+          {
+            if(method == 0)
+                //leftside
+                curvature = (curvature_last_cell[counter-1] + curvature_last_cell[counter])/2;
+              else if(method == 1)
+                //central
+                curvature = (curvature_last_cell[counter-1] + curvature_last_cell[counter] + curvature_last_cell[counter+1])/3;
+              else if (method == 2)
+                // double leftside
+                curvature = (curvature_last_cell[counter-2] + curvature_last_cell[counter-1] + curvature_last_cell[counter])/3;
+              else if (method == 3)
+                // left- and rightside
+                curvature = (curvature_last_cell[counter-1] + curvature_last_cell[counter]+ curvature_last_cell.front())/3;
+          }
+          else if(counter == (curvature_last_cell.size() - 1))
+          {
+            if(method == 0)
+              // rightside
+              curvature = (curvature_last_cell.front() + curvature_last_cell[counter])/2;
+            else if(method == 1)
+              //central
+              curvature = (curvature_last_cell[counter-1] + curvature_last_cell[counter] + curvature_last_cell.front())/3;
+            else if (method == 2)
+              // double rightside
+              curvature = (curvature_last_cell[counter] + curvature_last_cell.front()+ curvature_last_cell[1])/3;
+            else if (method == 3)
+              // left- and rightside
+              curvature = (curvature_last_cell.front() + curvature_last_cell[counter]+ curvature_last_cell[counter-2])/3;
+          }
+          else
+          {         
+            if (q == 0)
+            {
+              if(method == 0)
+                //leftside
+                curvature = (curvature_last_cell[counter-1] + curvature_last_cell[counter])/2;
+              else if(method == 1)
+                //central
+                curvature = (curvature_last_cell[counter-1] + curvature_last_cell[counter] + curvature_last_cell[counter+1])/3;
+              else if (method == 2)
+                // double leftside
+                curvature = (curvature_last_cell[counter-2] + curvature_last_cell[counter-1] + curvature_last_cell[counter])/3;
+              else if (method == 3)
+                // left- and rightside
+                curvature = (curvature_last_cell[counter-1] + curvature_last_cell[counter]+ curvature_last_cell[counter+2])/3;
+            }
+            else if (q == (fe_eval.n_quadrature_points - 1))
+            {
+              if(method == 0)
+                //rightside
+                curvature = (curvature_last_cell[counter] + curvature_last_cell[counter+1])/2;
+              else if(method == 1)
+                //central
+                curvature = (curvature_last_cell[counter-1] + curvature_last_cell[counter] + curvature_last_cell[counter+1])/3;
+              else if (method == 2)
+                // double rightside
+                curvature = (curvature_last_cell[counter] + curvature_last_cell[counter+1] + curvature_last_cell[counter+2])/3;
+              else if (method == 3)
+                // left- and rightside
+                //TODO: adapt here
+                curvature = (curvature_last_cell[counter-2] + curvature_last_cell[counter]+ curvature_last_cell[counter+1])/3;  
+            }
+            else
+              curvature = curvature_last_cell[counter];
+          }          
+          curvature_temp[q] = curvature;
+  
+          if(counter !=0)
+            std::cout << "q = " << q 
+            //<< " : normal values = " << normal_values[q][0] << " "
+            //<< normal_values[q][1] << "   normal gradients = " << normal_gradients[q][0][0] 
+            //<< " " << normal_gradients[q][0][1] << " " << normal_gradients[q][1][0] 
+            //<< " " << normal_gradients[q][1][1] 
+            << "  curvature = " << curvature_last_cell[counter] 
+            << "  last curvature = " << curvature_last_cell[counter-1] 
+            << "  next curvature = " << curvature_last_cell[counter+1] 
+            << "  end curvature = " <<  curvature_temp[q] << std::endl;
+          counter ++;
+        }
       cell->set_dof_values(curvature_temp, curvature_vector);
     }
 }
@@ -819,8 +962,9 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
               result_2 +=  (normal_l_values[q][i] * normal_l_values[q][i]) ;
             }
             curvature_hybrid_values[q] = result_1/(surface_tension * result_2);
-            std::cout << "hybrid curvature = " << curvature_hybrid_values[q] 
-                      << "  JxW = " << fe_l_eval.JxW(q) << std::endl;
+            //std::cout << "hybrid curvature = " << curvature_hybrid_values[q] 
+            //          << "  JxW = " << fe_l_eval.JxW(q) << std::endl;
+            //TODO: okay to do like that?
             integration_values.push_back(fe_l_eval.JxW(q) * curvature_hybrid_values[q]);
           }
           cell->set_dof_values(curvature_hybrid_values, curvature_hybrid_vector);
