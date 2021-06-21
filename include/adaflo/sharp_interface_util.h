@@ -150,7 +150,7 @@ namespace dealii
       std::array<std::vector<double>, spacedim> evaluation_values_normal;
 
       // TODO: make parameter, e.g. 15 as in Enright et al. (2010)
-      int n_iter = 3;
+      int n_iter = 7; //7;
       auto euler_coordinates_vector_temp = euler_coordinates_vector;
 
       levelset_vector.update_ghost_values();
@@ -178,15 +178,22 @@ namespace dealii
       cache_normal.reinit(evaluation_points, background_dofhandler.get_triangulation(), background_mapping);
       cache_ls.reinit(evaluation_points, background_dofhandler.get_triangulation(), background_mapping);
 
-      for (unsigned int comp = 0; comp < spacedim; ++comp)
+      /*for (unsigned int comp = 0; comp < spacedim; ++comp)
         evaluation_values_normal[comp] =
           VectorTools::point_values<1>(cache_normal,
                                       background_dofhandler,
                                       normal_vector.block(comp));
+*/
 
       for (int j = 0; j < n_iter; ++j)
         {
           std::cout << "loop j = " << j << std::endl;
+          for (unsigned int comp = 0; comp < spacedim; ++comp)
+            evaluation_values_normal[comp] =
+              VectorTools::point_values<1>(cache_ls,
+                                          background_dofhandler,
+                                          normal_vector.block(comp));
+          
           const auto evaluation_values_ls = 
             VectorTools::point_values<1>(cache_ls,
                                          background_dofhandler,
@@ -208,19 +215,12 @@ namespace dealii
 
               for (const auto q : fe_eval.quadrature_point_indices())
                 {
-                  //std::cout << "q loop" << std::endl;
                   const auto phi = evaluation_values_ls[counter];  
                   double distance = (1 - phi * phi) > 1e-2 ?
                         eps_used * std::log((1. + phi) / (1. - phi)) :
                          0;
-                  std::cout.precision(8);
                   
-                  //if (abs(phi) >= 0.1)
-                  //  std::cout << "bigger!! q = " << q << " counter = " << counter << "   phi = " << phi << "   distance  = " << distance << std::endl;
-
-                  
-                  
-                  if(j == 0 || abs(phi) >= 0.075 /*TODO value: dependent on mesh size? eg. 3dx = 0.075 für die Parametereinstellung*/ )
+                  if(j == 0 || abs(phi) >= 0.02 /*TODO value: dependent on mesh size? eg. 3dx = 0.075 für die Parametereinstellung*/ )
                   //if(j < n_iter)
                   {
                     Point<spacedim> normal;
@@ -236,8 +236,6 @@ namespace dealii
                     {
                       for(int i = 0; i < j; ++i)
                         lambda = lambda/2;
-
-                      //std::cout << " j>0:   phi = " << phi << "   new lambda = " << lambda << std::endl;
                     }
                     else if(j == n_iter)
                     {
@@ -247,11 +245,9 @@ namespace dealii
                     for (unsigned int comp = 0; comp < spacedim; ++comp)
                     {
                       temp[euler_dofhandler.get_fe().component_to_system_index(comp, q)] = 
-                              //new_points[counter][comp]  - lambda * normal[comp] * distance;
                               fe_eval.quadrature_point(q)[comp]  - lambda * normal[comp] * distance;
                       
                       temp_q[comp] = 
-                              //new_points[counter][comp] - lambda * normal[comp] * distance;
                              fe_eval.quadrature_point(q)[comp]  - lambda * normal[comp] * distance;
 
                       std::cout.precision(12);
