@@ -178,22 +178,22 @@ namespace dealii
       cache_normal.reinit(evaluation_points, background_dofhandler.get_triangulation(), background_mapping);
       cache_ls.reinit(evaluation_points, background_dofhandler.get_triangulation(), background_mapping);
 
-      /*for (unsigned int comp = 0; comp < spacedim; ++comp)
+      for (unsigned int comp = 0; comp < spacedim; ++comp)
         evaluation_values_normal[comp] =
           VectorTools::point_values<1>(cache_normal,
                                       background_dofhandler,
                                       normal_vector.block(comp));
-*/
+
 
       for (int j = 0; j < n_iter; ++j)
         {
           std::cout << "loop j = " << j << std::endl;
-          for (unsigned int comp = 0; comp < spacedim; ++comp)
+          /*for (unsigned int comp = 0; comp < spacedim; ++comp)
             evaluation_values_normal[comp] =
               VectorTools::point_values<1>(cache_ls,
                                           background_dofhandler,
                                           normal_vector.block(comp));
-          
+          */
           const auto evaluation_values_ls = 
             VectorTools::point_values<1>(cache_ls,
                                          background_dofhandler,
