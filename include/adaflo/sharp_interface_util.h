@@ -517,6 +517,10 @@ compute_curvature(const Mapping<dim, spacedim> &   mapping,
 
   Vector<double> curvature_temp;
   std::vector<double> curvature_last_cell;
+  std::vector<unsigned int> indices;
+  std::vector<types::global_dof_index> dof_indices;
+  unsigned int left_neighbour_of_zero;
+  unsigned int counter = 0;
 
   for (const auto &cell : dof_handler.active_cell_iterators())
     {
@@ -543,6 +547,16 @@ compute_curvature(const Mapping<dim, spacedim> &   mapping,
       fe_eval_dim.get_function_gradients(normal_vector, normal_gradients);
       fe_eval_dim.get_function_values(normal_vector, normal_values);
 
+      curvature_temp.reinit(quadrature.size());
+
+      dof_indices.resize(fe_eval.dofs_per_cell);
+      cell->get_dof_indices(dof_indices);
+     // std::cout << "counter = " << counter << "   dof indices = " << dof_indices[0] << "  " << dof_indices[1] << std::endl;
+      
+
+      if(dof_indices[1]==0)
+        left_neighbour_of_zero = dof_indices[0];
+
       for (const auto q : fe_eval.quadrature_point_indices())
       //for (const auto q : fe_eval_dim.quadrature_point_indices())
         {
@@ -552,21 +566,28 @@ compute_curvature(const Mapping<dim, spacedim> &   mapping,
             curvature += normal_gradients[q][c][c];
           
           //curvature_temp[q] = curvature;
-         // std::cout << "here" << std::endl;
+         // std::cout << " curvature = " << curvature << std::endl;
           curvature_last_cell.push_back(curvature);
+          indices.push_back(dof_indices[q]);
          // std::cout << "or here" << std::endl;
+         counter++;
         }
 
       //cell->set_dof_values(curvature_temp, curvature_vector);
+      
     }
 
-  unsigned int counter = 0;
+  //std::cout<< "indices size =" << indices.size() << "  curvat last cell size =" << curvature_last_cell.size() << std::endl;
+
+   counter = 0;
   //TODO: only working for 2 quad points in each cell
    // 0 = direct left or right neighbor cell quad point, not in same cell
    // 1 = central, left and right quad point
    // 2 = two direct left or right neighbor cell quad points, not the one in same cell
    // 3 = from left and right cell nearest quad point
-  unsigned int method = 2;
+   // 4 = hard coded only one point
+   // 5 = failure point single, all other points method 0
+  unsigned int method = 0;
 
     for (const auto &cell : dof_handler.active_cell_iterators())
     {
@@ -579,18 +600,22 @@ compute_curvature(const Mapping<dim, spacedim> &   mapping,
       fe_eval.reinit(cell);
       fe_eval_dim.reinit(dof_cell_dim);
       curvature_temp.reinit(quadrature.size());
+
+      dof_indices.resize(fe_eval.dofs_per_cell);
+      cell->get_dof_indices(dof_indices);
+      //std::cout << "dof indices = " << dof_indices[0] << "  " << dof_indices[1] << std::endl;
       
       for (const auto q : fe_eval.quadrature_point_indices())
       //for (const auto q : fe_eval_dim.quadrature_point_indices() )
         {
-         // std::cout << "for loop" << std::endl;
+          //std::cout << "for loop" << std::endl;
           double curvature = 0.0;
-          if(counter == 0)
+          /* if(counter == 0)
           {
             std::cout << "n points = " << fe_eval.n_quadrature_points << std::endl;
             if(method == 0)
               // leftside
-              curvature = (curvature_last_cell.back() + curvature_last_cell[counter])/2;
+              curvature = (curvature_last_cell[left_neighbour_of_zero] + curvature_last_cell[indices[counter]])/2;
             else if (method == 1)
               //central
               curvature = (curvature_last_cell.back() + curvature_last_cell[counter] + curvature_last_cell[counter+1])/3;
@@ -601,11 +626,11 @@ compute_curvature(const Mapping<dim, spacedim> &   mapping,
               // left- and rightside
               curvature = (curvature_last_cell.back() + curvature_last_cell[counter]+ curvature_last_cell[counter+2])/3;
             
-            std::cout << "  curvature last = " << curvature_last_cell.back() 
-                      << "  curvature = " << curvature_last_cell[0] 
+            std::cout << "left_neighbour_of_zero = " << left_neighbour_of_zero << "  curvature last = " << curvature_last_cell[left_neighbour_of_zero]
+                      << "  curvature = " << curvature_last_cell[indices[0]] 
                       << "  end curvature = " <<  curvature << std::endl;
           }
-          else if (counter == 1)
+          /* TODO: neccessary?! else if (counter == 1)
           {
             if(method == 0)
                 //rightside
@@ -620,11 +645,11 @@ compute_curvature(const Mapping<dim, spacedim> &   mapping,
                 // left- and rightside
                 curvature = (curvature_last_cell.back() + curvature_last_cell[counter]+ curvature_last_cell[counter+1])/3;  
           }
-          else if(counter == (curvature_last_cell.size() - 2))
+          else if(counter == (indices.size() - 2))
           {
             if(method == 0)
                 //leftside
-                curvature = (curvature_last_cell[counter-1] + curvature_last_cell[counter])/2;
+                curvature = (curvature_last_cell[indices[counter-2]] + curvature_last_cell[indices[counter]])/2;
               else if(method == 1)
                 //central
                 curvature = (curvature_last_cell[counter-1] + curvature_last_cell[counter] + curvature_last_cell[counter+1])/3;
@@ -635,11 +660,11 @@ compute_curvature(const Mapping<dim, spacedim> &   mapping,
                 // left- and rightside
                 curvature = (curvature_last_cell[counter-1] + curvature_last_cell[counter]+ curvature_last_cell.front())/3;
           }
-          else if(counter == (curvature_last_cell.size() - 1))
+         /* TODO: neccessary? else if(counter == (indices.size() - 1))
           {
             if(method == 0)
               // rightside
-              curvature = (curvature_last_cell.front() + curvature_last_cell[counter])/2;
+              curvature = (curvature_last_cell[indices[counter.front() + curvature_last_cell[indices[counter]])/2;
             else if(method == 1)
               //central
               curvature = (curvature_last_cell[counter-1] + curvature_last_cell[counter] + curvature_last_cell.front())/3;
@@ -649,17 +674,17 @@ compute_curvature(const Mapping<dim, spacedim> &   mapping,
             else if (method == 3)
               // left- and rightside
               curvature = (curvature_last_cell.front() + curvature_last_cell[counter]+ curvature_last_cell[counter-2])/3;
-          }
+          } 
           else
           {         
             if (q == 0)
             {
               if(method == 0)
                 //leftside
-                curvature = (curvature_last_cell[counter-1] + curvature_last_cell[counter])/2;
+                curvature = (curvature_last_cell[indices[counter-2]] + curvature_last_cell[indices[counter]])/2;
               else if(method == 1)
                 //central
-                curvature = (curvature_last_cell[counter-1] + curvature_last_cell[counter] + curvature_last_cell[counter+1])/3;
+                curvature = (curvature_last_cell[indices[counter-1]] + curvature_last_cell[indices[counter]] + curvature_last_cell[indices[counter+1]])/3;
               else if (method == 2)
                 // double leftside
                 curvature = (curvature_last_cell[counter-2] + curvature_last_cell[counter-1] + curvature_last_cell[counter])/3;
@@ -671,7 +696,7 @@ compute_curvature(const Mapping<dim, spacedim> &   mapping,
             {
               if(method == 0)
                 //rightside
-                curvature = (curvature_last_cell[counter] + curvature_last_cell[counter+1])/2;
+                curvature = (curvature_last_cell[indices[counter]] + curvature_last_cell[indices[counter+1]])/2;
               else if(method == 1)
                 //central
                 curvature = (curvature_last_cell[counter-1] + curvature_last_cell[counter] + curvature_last_cell[counter+1])/3;
@@ -684,21 +709,46 @@ compute_curvature(const Mapping<dim, spacedim> &   mapping,
                 curvature = (curvature_last_cell[counter-2] + curvature_last_cell[counter]+ curvature_last_cell[counter+1])/3;  
             }
             else
-              curvature = curvature_last_cell[counter];
-          }          
+              curvature = curvature_last_cell[indices[counter]];
+          }
+          */        
+          //TODO: change hard coded in flexible style
+          if(counter == 0 || counter == 1 || counter == 128 || counter == 129)
+            curvature = curvature_last_cell[counter]/2; 
+          else if(counter == 190 || counter == 254)
+            curvature = curvature_last_cell[counter-1];
+          else if(counter == 191)
+            curvature = curvature_last_cell[128]/2;
+          else if(counter == 255)
+            curvature = curvature_last_cell[0]/2;
+          else
+          {
+            if(q==0)
+              curvature = (curvature_last_cell[counter-1]+curvature_last_cell[counter])/2;
+            else if(q==1)
+              curvature = (curvature_last_cell[counter+1]+curvature_last_cell[counter])/2;
+          }
+            
+          
+          
           curvature_temp[q] = curvature;
-  
-          if(counter !=0)
-            std::cout << "q = " << q 
+          //std::cout << "counter = " << counter << "   q = " << q << "  end curvature = " <<  curvature_temp[q] << std::endl;
+
+          /*if(counter !=0)
+            std::cout << "counter = " << counter << "   q = " << q << "   indices = " << indices[counter]
+            << "   indices -2 = " << indices[counter-2] << "   indices +1 = " << indices[counter+1]
             //<< " : normal values = " << normal_values[q][0] << " "
             //<< normal_values[q][1] << "   normal gradients = " << normal_gradients[q][0][0] 
             //<< " " << normal_gradients[q][0][1] << " " << normal_gradients[q][1][0] 
             //<< " " << normal_gradients[q][1][1] 
-            << "  curvature = " << curvature_last_cell[counter] 
-            << "  last curvature = " << curvature_last_cell[counter-1] 
-            << "  next curvature = " << curvature_last_cell[counter+1] 
+            << "  curvature = " << curvature_last_cell[indices[counter]]
+            << "  last curvature = " << curvature_last_cell[indices[counter-2]] 
+            << "  next curvature = " << curvature_last_cell[indices[counter+1]] 
             << "  end curvature = " <<  curvature_temp[q] << std::endl;
+            */
           counter ++;
+          
+          //std::cout<< "curvautre size =" << curvature_temp.size() << std::endl;
         }
       cell->set_dof_values(curvature_temp, curvature_vector);
     }
