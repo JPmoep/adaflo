@@ -53,7 +53,7 @@ subsection Navier-Stokes
   end
 end
 subsection Output options
-  set output filename  = output-sim_rising_bubble/data_mls_ls_bisec7_tol002_normal_update_sr6
+  set output filename  = output-sim_rising_bubble/data_mls_ls_test
   set output verbosity = 1
   set output frequency = 0.02
   set output vtk files = 1

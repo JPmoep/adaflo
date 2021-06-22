@@ -134,7 +134,8 @@ namespace dealii
                            const double &                        eps_used,
                            const DoFHandler<dim, spacedim> &     euler_dofhandler,
                            const Mapping<dim, spacedim> &        euler_mapping,
-                           VectorType &                          euler_coordinates_vector)
+                           VectorType &                          euler_coordinates_vector,
+                           std::vector<double> &                 levelset_at_surface)
     {
       FEValues<dim, spacedim> fe_eval(
         euler_mapping,
@@ -148,9 +149,10 @@ namespace dealii
       std::vector<types::global_dof_index> temp_dof_indices;
 
       std::array<std::vector<double>, spacedim> evaluation_values_normal;
+      
 
       // TODO: make parameter, e.g. 15 as in Enright et al. (2010)
-      int n_iter = 7; //7;
+      const int n_iter = 7; //7;
       auto euler_coordinates_vector_temp = euler_coordinates_vector;
 
       levelset_vector.update_ghost_values();
@@ -158,8 +160,8 @@ namespace dealii
 
 
       std::vector<Point<spacedim>> evaluation_points;
-      std::vector<Point<spacedim>> original_points;
       std::vector<Point<spacedim>> new_points;
+      unsigned int counter = 0;
       for (const auto &cell : euler_dofhandler.active_cell_iterators())
         {
           fe_eval.reinit(cell);
@@ -167,27 +169,28 @@ namespace dealii
           for (const auto q : fe_eval.quadrature_point_indices())
           {
             evaluation_points.push_back(fe_eval.quadrature_point(q));
-            //original_points.push_back(fe_eval.quadrature_point(q));
             new_points.push_back(fe_eval.quadrature_point(q));
+            counter++;
           }
             
         }
+      //const int size = counter;
+      //Tensor<size, n_iter> levelset_at_surface_iter;
 
-      Utilities::MPI::RemotePointEvaluation<spacedim, spacedim> cache_normal, cache_ls;
+      Utilities::MPI::RemotePointEvaluation<spacedim, spacedim> cache, cache_ls;
       
-      cache_normal.reinit(evaluation_points, background_dofhandler.get_triangulation(), background_mapping);
-      cache_ls.reinit(evaluation_points, background_dofhandler.get_triangulation(), background_mapping);
+      cache.reinit(evaluation_points, background_dofhandler.get_triangulation(), background_mapping);
 
       for (unsigned int comp = 0; comp < spacedim; ++comp)
         evaluation_values_normal[comp] =
-          VectorTools::point_values<1>(cache_normal,
+          VectorTools::point_values<1>(cache,
                                       background_dofhandler,
                                       normal_vector.block(comp));
 
 
       for (int j = 0; j < n_iter; ++j)
         {
-          std::cout << "loop j = " << j << std::endl;
+         // std::cout << "loop j = " << j << std::endl;
           /*for (unsigned int comp = 0; comp < spacedim; ++comp)
             evaluation_values_normal[comp] =
               VectorTools::point_values<1>(cache_ls,
@@ -195,13 +198,13 @@ namespace dealii
                                           normal_vector.block(comp));
           */
           const auto evaluation_values_ls = 
-            VectorTools::point_values<1>(cache_ls,
+            VectorTools::point_values<1>(cache,
                                          background_dofhandler,
                                          levelset_vector);
           
           //evaluation_points.clear();
           
-          unsigned int counter = 0;
+          int counter = 0;
 
           for (const auto &cell : euler_dofhandler.active_cell_iterators())
             {
@@ -216,6 +219,7 @@ namespace dealii
               for (const auto q : fe_eval.quadrature_point_indices())
                 {
                   const auto phi = evaluation_values_ls[counter];  
+                  
                   double distance = (1 - phi * phi) > 1e-2 ?
                         eps_used * std::log((1. + phi) / (1. - phi)) :
                          0;
@@ -271,30 +275,14 @@ namespace dealii
                         temp[comp] = boundary_points.second[comp];
                         */ 
                     }
-                    //original_points.push_back(temp_q);
-
+                    
                   }
-                  /*else{
-                    for (unsigned int comp = 0; comp < spacedim; ++comp)
-                    {
-                     // std::cout <<  "quad pt = " << fe_eval.quadrature_point(q)[comp]
-                     //          << "  old new pt = " << new_points[counter][comp]
-                     //           << "  org pt = " << original_points[counter][comp] << std::endl;
-                      temp[euler_dofhandler.get_fe().component_to_system_index(comp, q)] = new_points[counter][comp];
-                                  //fe_eval.quadrature_point(q)[comp]; //original_points[counter][comp];
-                      temp_q[comp] = new_points[counter][comp]; 
-                                //fe_eval.quadrature_point(q)[comp]; //original_points[counter][comp];
-                      new_points[counter][comp] = temp_q[comp];
-                    }
+                  //levelset_at_surface_iter[counter][j] = std::abs(phi);  
+                  if(j == n_iter-1)
+                    levelset_at_surface.push_back(std::abs(phi));         
 
-                  }
-                 // std::cout <<  "new pt = " << new_points[counter][0]
-                 //           << "   " << new_points[counter][1] << std::endl;
-                  
-                  evaluation_points.push_back(temp_q);
-                  */
-                  counter++;
-                  
+                  counter++; 
+       
                 }
               cell->set_dof_values(temp, euler_coordinates_vector_temp);
             }

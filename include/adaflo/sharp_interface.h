@@ -558,14 +558,9 @@ public:
                                      surface_coordinates_vector);
     surface_coordinates_vector.zero_out_ghost_values();
 
-    auto surface_coordinates_vector_old = surface_coordinates_vector;
-    auto surface_coordinates_vector_old_old = surface_coordinates_vector_old;
-
     euler_mapping = std::make_shared<MappingFEField<dim - 1, dim, VectorType>>(
       surface_dofhandler_dim, surface_coordinates_vector);
-    
-    euler_mapping_old = std::make_shared<MappingFEField<dim - 1, dim, VectorType>>(
-      surface_dofhandler_dim, surface_coordinates_vector_old);
+
 
     this->update_phases();
     this->update_gravity_force();
@@ -797,10 +792,7 @@ private:
   DoFHandler<dim - 1, dim>               surface_dofhandler_dim;
   DoFHandler<dim - 1, dim>               surface_dofhandler;
   VectorType                             surface_coordinates_vector;
-  VectorType                             surface_coordinates_vector_old;
-  VectorType                             surface_coordinates_vector_old_old;
   std::shared_ptr<Mapping<dim - 1, dim>> euler_mapping;
-  std::shared_ptr<Mapping<dim - 1, dim>> euler_mapping_old;
 
   VectorType normal_vector;
   VectorType curvature_vector;
@@ -838,14 +830,8 @@ public:
     euler_dofhandler.distribute_dofs(surface_fe_dim);
 
     euler_vector.reinit(euler_dofhandler.n_dofs());
-    //TODO: necessary?
-    euler_vector_old.reinit(euler_dofhandler.n_dofs());
-    euler_vector_old_old.reinit(euler_dofhandler.n_dofs());
 
     euler_vector.update_ghost_values();
-    //TODO: necessary?
-    euler_vector_old.update_ghost_values();
-    euler_vector_old_old.update_ghost_values();
 
     VectorTools::
       get_position_vector(MappingQGeneric<dim - 1, dim>(4 /*TODO: this is a high number to well represent curved surfaces, the actual value is not that relevant*/), euler_dofhandler, euler_vector);
@@ -853,16 +839,6 @@ public:
     euler_mapping =
       std::make_shared<MappingFEField<dim - 1, dim, VectorType>>(euler_dofhandler,
                                                                  euler_vector);
-    VectorTools::
-      get_position_vector(MappingQGeneric<dim - 1, dim>(4 /*TODO: this is a high number to well represent curved surfaces, the actual value is not that relevant*/), euler_dofhandler, euler_vector_old);
-    euler_vector_old.zero_out_ghost_values();
-
-    euler_mapping_old =
-      std::make_shared<MappingFEField<dim - 1, dim, VectorType>>(euler_dofhandler,
-                                                                 euler_vector_old);
-
-    auto euler_vector_old = euler_vector;
-    auto euler_vector_old_old = euler_vector_old;
 
     // initialize
     this->update_phases();
@@ -1286,6 +1262,17 @@ public:
         level_set_solver.pcout << "d = " << d << " :   center of mass = " << center_of_mass[d] <<  std::endl;
       }
     
+    //TODO: L2 norm of level set at surface
+    double levelset_at_surface_max = 0.0;
+    double sum = 0.0;
+    for(unsigned int i= 0; i < level_set_at_surface.size(); ++i)
+    {
+      sum += level_set_at_surface[i]*level_set_at_surface[i];
+      levelset_at_surface_max = std::max(level_set_at_surface[i], levelset_at_surface_max);
+    }
+    double levelset_at_surface_norm = std::sqrt(sum);
+      
+    
     this->set_adaptive_time_step(global_velocity.norm() / global_area);
 
     const double circularity = 2. * std::sqrt(global_area * numbers::PI) / global_perimeter;
@@ -1313,11 +1300,13 @@ public:
        std::pair<double, double> concentration = get_concentration_range();
         level_set_solver.pcout << "  Range of level set values: " << concentration.first << " / "
               << concentration.second << std::endl;
+
+        level_set_solver.pcout << "  Max of level set at surface: " << levelset_at_surface_max << "   l2 norm of ls at surface: " << levelset_at_surface_norm << std::endl;
   
         std::cout.precision(old_precision);
       }
 
-    std::vector<double> data(4 + 2 * dim);
+    std::vector<double> data(6 + 2 * dim);
     data[0] = navier_stokes_solver.time_stepping.now();
     data[1] = global_area;
     data[2] = global_perimeter;
@@ -1326,6 +1315,9 @@ public:
       data[4 + d] = global_velocity[d] / global_area;
     for (unsigned int d = 0; d < dim; ++d)
       data[4 + dim + d] = global_mass_center[d] / global_area;
+    
+    data[4+2*dim] = levelset_at_surface_max;
+    data[5+2*dim] = levelset_at_surface_norm;
 
     // get interface points from other processors
     if (interface_points != 0)
@@ -1418,7 +1410,8 @@ private:
                                         level_set_solver.get_eps_used(),
                                         euler_dofhandler,
                                         *euler_mapping,
-                                        euler_vector);   
+                                        euler_vector,
+                                        level_set_at_surface);   
                                                                    
   }
 
@@ -1569,8 +1562,9 @@ private:
   const bool use_sharp_interface;
 
   // compute bubble statistics
-  std::pair<double, double> concentration;
+  std::pair<double, double>              concentration;
   mutable std::pair<double, double>      last_concentration_range;
+  std::vector<double>                    level_set_at_surface;
   
   // background mesh
   NavierStokes<dim> & navier_stokes_solver;
@@ -1580,10 +1574,8 @@ private:
   // surface mesh
   DoFHandler<dim - 1, dim>               euler_dofhandler;
   VectorType                             euler_vector;
-  VectorType                             euler_vector_old;
-  VectorType                             euler_vector_old_old;
   std::shared_ptr<Mapping<dim - 1, dim>> euler_mapping;
-  std::shared_ptr<Mapping<dim - 1, dim>> euler_mapping_old;
+  
 };
 
 #endif

@@ -333,7 +333,7 @@ MicroFluidicProblem<dim>::run()
         output_positions3.precision(14);
         if (first_output)
           output_positions3
-            << "#    time        area      perimeter   circularity   bubble_xvel   bubble_yvel   bubble_xpos    bubble_ypos"
+            << "#    time        area      perimeter   circularity   bubble_xvel   bubble_yvel   bubble_xpos    bubble_ypos     ls_surface_max" //    ls_surface_l2"
             << std::endl;
         for (unsigned int i = 0; i < solution_data.size(); ++i)
           {
