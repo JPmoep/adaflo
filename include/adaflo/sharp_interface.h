@@ -840,6 +840,8 @@ public:
       std::make_shared<MappingFEField<dim - 1, dim, VectorType>>(euler_dofhandler,
                                                                  euler_vector);
 
+    levelset_at_surface_vector.reinit(euler_dofhandler.n_dofs());
+
     // initialize
     this->update_phases();
     this->update_gravity_force();
@@ -958,6 +960,7 @@ public:
         DataOut<dim - 1, dim> data_out;
         data_out.set_flags(flags);
         data_out.attach_dof_handler(euler_dofhandler);
+        data_out.add_data_vector(euler_dofhandler, levelset_at_surface_vector, "levelset");
 
         data_out.build_patches(
           *euler_mapping,
@@ -1263,15 +1266,15 @@ public:
       }
     
     //TODO: L2 norm of level set at surface
-    double levelset_at_surface_max = 0.0;
+    double ls_max = 0.0;
     double sum = 0.0;
     for(unsigned int i= 0; i < level_set_at_surface.size(); ++i)
     {
       sum += level_set_at_surface[i]*level_set_at_surface[i];
-      levelset_at_surface_max = std::max(level_set_at_surface[i], levelset_at_surface_max);
+      ls_max = std::max(level_set_at_surface[i], ls_max);
     }
-    double levelset_at_surface_norm = std::sqrt(sum);
-      
+    double ls_norm = std::sqrt(sum);  
+    unsigned int n_iter = level_set_at_surface_max.size();
     
     this->set_adaptive_time_step(global_velocity.norm() / global_area);
 
@@ -1301,12 +1304,13 @@ public:
         level_set_solver.pcout << "  Range of level set values: " << concentration.first << " / "
               << concentration.second << std::endl;
 
-        level_set_solver.pcout << "  Max of level set at surface: " << levelset_at_surface_max << "   l2 norm of ls at surface: " << levelset_at_surface_norm << std::endl;
+        level_set_solver.pcout << "  Max of level set at surface: " << ls_max << "   l2 norm of ls at surface: " << ls_norm << std::endl;
   
         std::cout.precision(old_precision);
       }
 
-    std::vector<double> data(6 + 2 * dim);
+    //TODO: put into data vector? level_set_at_surface_max, level_set_at_surface_norm
+    std::vector<double> data(4 + 2 * dim + 2 * n_iter);
     data[0] = navier_stokes_solver.time_stepping.now();
     data[1] = global_area;
     data[2] = global_perimeter;
@@ -1315,9 +1319,11 @@ public:
       data[4 + d] = global_velocity[d] / global_area;
     for (unsigned int d = 0; d < dim; ++d)
       data[4 + dim + d] = global_mass_center[d] / global_area;
+    for (unsigned int i = 0; i < n_iter; ++i)
+      data[4 + 2*dim + i] = level_set_at_surface_max[i];
+    for (unsigned int i = 0; i < n_iter; ++i)
+      data[4 + 2*dim + n_iter + i] = level_set_at_surface_norm[i];
     
-    data[4+2*dim] = levelset_at_surface_max;
-    data[5+2*dim] = levelset_at_surface_norm;
 
     // get interface points from other processors
     if (interface_points != 0)
@@ -1402,7 +1408,7 @@ private:
                                         *euler_mapping,
                                         euler_vector);
                                         */
-    
+    //levelset_at_surface_vector.reinit(euler_dofhandler.n_dofs());
     VectorTools::update_position_vector_level_set(level_set_solver.get_dof_handler(),
                                         navier_stokes_solver.mapping,
                                         level_set_solver.get_level_set_vector(),
@@ -1411,7 +1417,10 @@ private:
                                         euler_dofhandler,
                                         *euler_mapping,
                                         euler_vector,
-                                        level_set_at_surface);   
+                                        levelset_at_surface_vector,
+                                        level_set_at_surface,
+                                        level_set_at_surface_max, 
+                                        level_set_at_surface_norm);   
                                                                    
   }
 
@@ -1564,7 +1573,10 @@ private:
   // compute bubble statistics
   std::pair<double, double>              concentration;
   mutable std::pair<double, double>      last_concentration_range;
+  //for norm of level set
+  VectorType                             levelset_at_surface_vector;
   std::vector<double>                    level_set_at_surface;
+  std::vector<double>                    level_set_at_surface_max, level_set_at_surface_norm;
   
   // background mesh
   NavierStokes<dim> & navier_stokes_solver;

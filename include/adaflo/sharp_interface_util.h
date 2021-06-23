@@ -135,7 +135,10 @@ namespace dealii
                            const DoFHandler<dim, spacedim> &     euler_dofhandler,
                            const Mapping<dim, spacedim> &        euler_mapping,
                            VectorType &                          euler_coordinates_vector,
-                           std::vector<double> &                 levelset_at_surface)
+                           VectorType &                          levelset_at_surface_vector,
+                           std::vector<double> &                 levelset_at_surface,
+                           std::vector<double> &                 ls_max,
+                           std::vector<double> &                 ls_norm)
     {
       FEValues<dim, spacedim> fe_eval(
         euler_mapping,
@@ -150,9 +153,20 @@ namespace dealii
 
       std::array<std::vector<double>, spacedim> evaluation_values_normal;
       
+      //for norm of level set
+      Vector<double> ls_temp;
+      double ls_sum = 0.0;
 
       // TODO: make parameter, e.g. 15 as in Enright et al. (2010)
-      const int n_iter = 7; //7;
+      const int n_iter = 7;
+      const double tol = 0.02; //0.005; //0.02; //0.1
+      double distance_tol = (1 - tol * tol) > 1e-2 ?
+                        eps_used * std::log((1. + tol) / (1. - tol)) :
+                         0;
+      ls_max.resize(n_iter);
+      ls_norm.resize(n_iter);
+      levelset_at_surface.clear();
+
       auto euler_coordinates_vector_temp = euler_coordinates_vector;
 
       levelset_vector.update_ghost_values();
@@ -161,7 +175,7 @@ namespace dealii
 
       std::vector<Point<spacedim>> evaluation_points;
       std::vector<Point<spacedim>> new_points;
-      unsigned int counter = 0;
+      int counter = 0;
       for (const auto &cell : euler_dofhandler.active_cell_iterators())
         {
           fe_eval.reinit(cell);
@@ -174,12 +188,11 @@ namespace dealii
           }
             
         }
-      //const int size = counter;
-      //Tensor<size, n_iter> levelset_at_surface_iter;
 
       Utilities::MPI::RemotePointEvaluation<spacedim, spacedim> cache, cache_ls;
       
       cache.reinit(evaluation_points, background_dofhandler.get_triangulation(), background_mapping);
+      cache_ls.reinit(evaluation_points, background_dofhandler.get_triangulation(), background_mapping);
 
       for (unsigned int comp = 0; comp < spacedim; ++comp)
         evaluation_values_normal[comp] =
@@ -198,13 +211,14 @@ namespace dealii
                                           normal_vector.block(comp));
           */
           const auto evaluation_values_ls = 
-            VectorTools::point_values<1>(cache,
+            VectorTools::point_values<1>(cache_ls,
                                          background_dofhandler,
                                          levelset_vector);
           
           //evaluation_points.clear();
           
           int counter = 0;
+          ls_max[j] = 0.0;
 
           for (const auto &cell : euler_dofhandler.active_cell_iterators())
             {
@@ -212,6 +226,7 @@ namespace dealii
 
               temp.reinit(fe_eval.dofs_per_cell);
               temp_dof_indices.resize(fe_eval.dofs_per_cell);
+              ls_temp.reinit(fe_eval.n_quadrature_points);
 
               cell->get_dof_indices(temp_dof_indices);
               cell->get_dof_values(euler_coordinates_vector, temp);
@@ -224,7 +239,7 @@ namespace dealii
                         eps_used * std::log((1. + phi) / (1. - phi)) :
                          0;
                   
-                  if(j == 0 || abs(phi) >= 0.02 /*TODO value: dependent on mesh size? eg. 3dx = 0.075 für die Parametereinstellung*/ )
+                  if(j == 0 || abs(phi) >= tol /*TODO value: dependent on mesh size? eg. 3dx = 0.075 für die Parametereinstellung*/ )
                   //if(j < n_iter)
                   {
                     Point<spacedim> normal;
@@ -255,11 +270,11 @@ namespace dealii
                              fe_eval.quadrature_point(q)[comp]  - lambda * normal[comp] * distance;
 
                       std::cout.precision(12);
-                     /*if (j > 0 ) 
+                    /* if (j > 0 ) 
                      { std::cout << "q = " << q << "  comp = " << comp << "  counter = " << counter 
                                 << "  new pt = " << temp_q[comp] 
                                 << "  old new pt = " << new_points[counter][comp]
-                                << "  org pt = " << original_points[counter][comp] 
+                                << "  org pt = " << evaluation_points[counter][comp] 
                                 << "  dist = " << distance 
                                 << "  phi = " << phi << std::endl;
                      }*/
@@ -277,20 +292,28 @@ namespace dealii
                     }
                     
                   }
-                  //levelset_at_surface_iter[counter][j] = std::abs(phi);  
+                  ls_max[j] = std::max(ls_max[j], std::abs(phi));
+                  ls_sum += phi * phi;
+
                   if(j == n_iter-1)
                     levelset_at_surface.push_back(std::abs(phi));         
 
                   counter++; 
-       
+                  ls_temp[q] = phi;
                 }
               cell->set_dof_values(temp, euler_coordinates_vector_temp);
+              cell->set_dof_values(ls_temp, levelset_at_surface_vector);
             }
             //std::cout << "size eval pts = " << evaluation_points.size() << "    size new pts = " << new_points.size()  << std::endl;
             cache_ls.reinit(new_points, background_dofhandler.get_triangulation(), background_mapping);
-            //cache_ls.reinit(evaluation_points, background_dofhandler.get_triangulation(), background_mapping);
             euler_coordinates_vector = euler_coordinates_vector_temp;
-        }  
+            
+            //evaluate l2 norm of level set
+            ls_norm[j] = std::sqrt(ls_sum);
+            ls_sum = 0.0;
+            std::cout << "iter = " << j << "  tol = " << tol << "  dist tol = " << distance_tol 
+                    << "   ||phi||_max = " << ls_max[j] <<  "   ||phi||_2 = " << ls_norm[j] << std::endl;
+        }   
     }
   } // namespace VectorTools
 
