@@ -831,9 +831,16 @@ compute_force_vector_sharp_interface(const Triangulation<dim, spacedim> &surface
                                      const double                surface_tension,
                                      const BlockVectorType &     normal_solution,
                                      const VectorType &          curvature_solution,
-                                     VectorType &                force_vector)
+                                     VectorType &                force_vector,
+                                     const VectorType &          ls_vector,
+                                     std::vector<Point<2>>  &  interface_points)
 {
   using T = double; // type of data to be communicated (only |J|xW)
+
+  const unsigned int                                n_subdivisions = 3;
+  GridTools::MarchingCubeAlgorithm<dim, VectorType> mc(mapping,
+                                                       dof_handler.get_fe(),
+                                                       n_subdivisions);
 
   std::vector<Point<spacedim>> integration_points;
   {
@@ -988,11 +995,29 @@ compute_force_vector_sharp_interface(const Triangulation<dim, spacedim> &surface
 
   normal_solution.update_ghost_values();
   curvature_solution.update_ghost_values();
+  ls_vector.update_ghost_values();
+
+  //TODO: yesterday loop over all cells for identifying bubble interface
+  // loop over all cells
+  for (const auto &cell : dof_handler.active_cell_iterators())
+    {
+      if (cell->is_locally_owned() == false)
+        continue; 
+
+      // determine points and cells of aux surface triangulation
+      std::vector<Point<dim>>          surface_vertices;
+      std::vector<::CellData<dim - 1>> surface_cells;
+
+      // run square/cube marching algorithm
+      mc.process_cell(cell, ls_vector, 0.0, surface_vertices, surface_cells);
+      interface_points.push_back(surface_vertices);
+    }
 
   eval.template process_and_evaluate<T>(integration_values, buffer, integration_function);
 
   normal_solution.zero_out_ghost_values();
   curvature_solution.zero_out_ghost_values();
+  ls_vector.zero_out_ghost_values();
   force_vector.compress(VectorOperation::add);
 }
 

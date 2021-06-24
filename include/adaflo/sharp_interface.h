@@ -652,6 +652,13 @@ public:
     return concentration;
   }
 
+  //TODO fill function if needed yesterday
+  const std::vector<Point<dim>> &
+  get_level_set_interface()
+  {
+    return 0;
+  }
+
   //TODO: fill function if needed
   std::vector<double> 
   compute_bubble_statistics(
@@ -1480,7 +1487,9 @@ private:
         navier_stokes_solver.get_parameters().surface_tension,
         level_set_solver.get_normal_vector(),
         level_set_solver.get_curvature_vector(),
-        navier_stokes_solver.user_rhs.block(0));
+        navier_stokes_solver.user_rhs.block(0),
+        level_set_solver.get_level_set_vector(),
+        interface_points_mc);
     else if (!use_auxiliary_surface_mesh && use_sharp_interface)
       compute_force_vector_sharp_interface(
         QGauss<dim - 1>(2 /*TODO*/),
@@ -1567,12 +1576,20 @@ private:
     navier_stokes_solver.time_stepping.set_time_step(new_time_step);
   }
 
+  //TODO yesterday
+  const std::vector<Point<dim>> &
+  get_level_set_interface()
+  {
+    return interface_points_mc;
+  }
+
   const bool use_auxiliary_surface_mesh;
   const bool use_sharp_interface;
 
   // compute bubble statistics
   std::pair<double, double>              concentration;
   mutable std::pair<double, double>      last_concentration_range;
+
   //for norm of level set
   VectorType                             levelset_at_surface_vector;
   std::vector<double>                    level_set_at_surface;
@@ -1582,6 +1599,7 @@ private:
   NavierStokes<dim> & navier_stokes_solver;
   LevelSetSolver<dim> level_set_solver;
   //TwoPhaseBaseAlgorithm<dim> & two_phase_solver;
+  std::vector<Point<2>>     interface_points_mc;
 
   // surface mesh
   DoFHandler<dim - 1, dim>               euler_dofhandler;

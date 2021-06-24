@@ -103,6 +103,8 @@ void
   
   std::vector<std::vector<double>> solution_data_spc;
   std::vector<std::vector<double>> solution_data;
+  //TODO yesterday
+  std::vector<Point<dim>> interface_data;
   double global_omega_diameter;
   std::pair<double, double> concentration;
   mutable std::pair<double, double>      last_concentration_range;
@@ -313,6 +315,8 @@ MicroFluidicProblem<dim>::run()
       evaluate_spurious_velocities(navier_stokes_solver);
       // evaluate bubble
       solution_data.push_back(solver->compute_bubble_statistics(global_omega_diameter));
+      //TODO yesterday
+      interface_data.push_back(solver->get_level_set_interface());
 
       if (solution_data.size() > 0 &&
         Utilities::MPI::this_mpi_process(triangulation.get_communicator()) == 0 &&
@@ -344,6 +348,9 @@ MicroFluidicProblem<dim>::run()
           }
         solution_data.clear();
         first_output = false;
+
+
+        //TODO yesterday .csv output
       }
 
     }
