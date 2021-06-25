@@ -749,6 +749,99 @@ compute_curvature(const Mapping<dim, spacedim> &   mapping,
 }
 
 /**
+ * routine to compute curvature from actual interface with normal vector field
+ * for hybrid force for mixed level set
+ */
+template <int dim, int spacedim, typename VectorType>
+void
+compute_curvature_level_set(const DoFHandler<spacedim> &          background_dofhandler,
+                          const Mapping<spacedim, spacedim> &   background_mapping,
+                          const Mapping<dim, spacedim> &   mapping,
+                          const DoFHandler<dim, spacedim> &dof_handler_dim,
+                          const DoFHandler<dim, spacedim> &dof_handler,
+                          const Quadrature<dim>            quadrature,
+                          const BlockVectorType &          normal_ls_vector,
+                          const VectorType &               normal_vector,
+                          VectorType &                     curvature_vector)
+{
+  //TODO: need normal gradient!!!!
+  FEValues<dim, spacedim> fe_eval(mapping,
+                                  dof_handler.get_fe(),
+                                  quadrature,
+                                  update_gradients | update_quadrature_points);
+  FEValues<dim, spacedim> fe_eval_dim(mapping,
+                                      dof_handler_dim.get_fe(),
+                                      quadrature,
+                                      update_gradients);
+
+  std::array<std::vector<double>, spacedim> evaluation_values_normal;
+  std::vector<Point<spacedim>> evaluation_points;
+  Vector<double> curvature_temp;
+
+  normal_vector.update_ghost_values();
+
+  for (const auto &cell : dof_handler.active_cell_iterators())
+  {
+    fe_eval.reinit(cell);
+
+    for (const auto q : fe_eval.quadrature_point_indices())
+    {
+      evaluation_points.push_back(fe_eval.quadrature_point(q));
+    }
+      
+  }
+  Utilities::MPI::RemotePointEvaluation<spacedim, spacedim> cache;
+  cache.reinit(evaluation_points, background_dofhandler.get_triangulation(), background_mapping);
+
+  for (unsigned int comp = 0; comp < spacedim; ++comp)
+    evaluation_values_normal[comp] =
+      VectorTools::point_values<1>(cache,
+                                 background_dofhandler,
+                                 normal_ls_vector.block(comp));
+
+  unsigned int counter = 0;
+
+  for (const auto &cell : dof_handler.active_cell_iterators())
+    {
+      TriaIterator<DoFCellAccessor<dim, spacedim, false>> dof_cell_dim(
+        &dof_handler_dim.get_triangulation(),
+        cell->level(),
+        cell->index(),
+        &dof_handler_dim);
+
+      fe_eval.reinit(cell);
+      fe_eval_dim.reinit(dof_cell_dim);
+
+      curvature_temp.reinit(quadrature.size());
+
+      std::vector<std::vector<Tensor<1, spacedim, double>>> normal_gradients(
+        quadrature.size(), std::vector<Tensor<1, spacedim, double>>(spacedim));
+
+      fe_eval_dim.get_function_gradients(normal_vector, normal_gradients);
+
+      for (const auto q : fe_eval_dim.quadrature_point_indices())
+        {
+          Point<spacedim> normal;
+          for (unsigned int comp = 0; comp < spacedim; ++comp)
+            normal[comp] = evaluation_values_normal[comp][counter];
+          
+          if(normal.norm() > 1e-10)
+              normal/=normal.norm();
+
+          double curvature = 0.0;
+
+          for (unsigned c = 0; c < spacedim; ++c)
+            curvature += normal_gradients[q][c][c];
+
+          curvature_temp[q] = curvature;
+        }
+
+      cell->set_dof_values(curvature_temp, curvature_vector);
+    }
+}
+
+
+/**
  * routine to compute lagragian force from actual interface at surface mesh
  * with geomatric values for curvature and normaal for front-tracking method
  */
@@ -1004,7 +1097,7 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
             {
               result_1 += (force_l_values[q][i] * normal_l_values[q][i]);
               result_2 +=  (normal_l_values[q][i] * normal_l_values[q][i]);
-              force_buffer.push_back(force_l_values[q][i]);
+              //force_buffer.push_back(force_l_values[q][i]);
             }
             curvature_hybrid_values[q] = result_1/(surface_tension * result_2);
             std::cout << "normal = " << normal_l_values[q][0] << " " << normal_l_values[q][1]
@@ -1013,6 +1106,7 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
             //std::cout << "hybrid curvature = " << curvature_hybrid_values[q] 
             //          << "  JxW = " << fe_l_eval.JxW(q) << std::endl;
             //TODO: okay to do like that?
+            integration_values.push_back(fe_l_eval.JxW(q) * curvature_hybrid_values[q]);
             
           }
           cell->set_dof_values(curvature_hybrid_values, curvature_hybrid_vector);
@@ -1043,7 +1137,7 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
   Utilities::MPI::RemotePointEvaluation<spacedim, spacedim> eval;
   eval.reinit(integration_points, dof_handler.get_triangulation(), mapping);
 
-  //std::vector<T> integration_values;
+/*  //std::vector<T> integration_values;
   {
     //TODO: combine this with the one above?
     FE_Nothing<dim, spacedim> dummy;
@@ -1067,7 +1161,7 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
         
       }
   }
-  
+ */ 
 
   const auto integration_function = [&](const auto &values, const auto &cell_data) {
     AffineConstraints<double> constraints; // TODO: use the right ones
@@ -1092,14 +1186,11 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
 
     for (unsigned int i = 0; i < cell_data.cells.size(); ++i)
       {
-        std::cout << "i = " << i << "   of " << cell_data.cells.size() << std::endl;
         typename DoFHandler<spacedim>::active_cell_iterator cell = {
           &eval.get_triangulation(),
           cell_data.cells[i].first,
           cell_data.cells[i].second,
           &dof_handler};
-
-          std::cout << "cell" << std::endl;
 
         typename DoFHandler<spacedim>::active_cell_iterator cell_dim = {
           &eval.get_triangulation(),
@@ -1107,40 +1198,22 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
           cell_data.cells[i].second,
           &dof_handler_dim};
 
-        std::cout << "cell dim" << std::endl;
-        TriaIterator<DoFCellAccessor<dim, spacedim, false>> dof_cell(
-          &surface_dofhandler.get_triangulation(),
-          //cell->level(),
-          //cell->index(),
-          cell_data.cells[i].first,
-          cell_data.cells[i].second,
-          &surface_dofhandler);
-        
-        TriaIterator<DoFCellAccessor<dim, spacedim, false>> dof_cell_dim(
-          &surface_dofhandler_dim.get_triangulation(), 
-          //cell_data.cells[i].first,
-          //cell_data.cells[i].second,
-          cell->level(), 
-          cell->index(), 
-          &surface_dofhandler_dim);
-
-          std::cout << "dof cell dim" << std::endl;
 
         const ArrayView<const Point<spacedim>> unit_points(
           cell_data.reference_point_values.data() + cell_data.reference_point_ptrs[i],
           cell_data.reference_point_ptrs[i + 1] - cell_data.reference_point_ptrs[i]);
 
         // values = JxW *curvature_hybrid
-        //const ArrayView<const T> curvature_x_JxW(values.data() + cell_data.reference_point_ptrs[i],
+        const ArrayView<const T> curvature_x_JxW(values.data() + cell_data.reference_point_ptrs[i],
+                                    cell_data.reference_point_ptrs[i + 1] -
+                                       cell_data.reference_point_ptrs[i]);
+        //const ArrayView<const T> JxW(values.data() + cell_data.reference_point_ptrs[i],
+        //                             cell_data.reference_point_ptrs[i + 1] -
+        //                               cell_data.reference_point_ptrs[i]);
+
+        //const ArrayView<const T> force_lagrange(force_buffer.data() + cell_data.reference_point_ptrs[i],
         //                            cell_data.reference_point_ptrs[i + 1] -
         //                               cell_data.reference_point_ptrs[i]);
-        const ArrayView<const T> JxW(values.data() + cell_data.reference_point_ptrs[i],
-                                     cell_data.reference_point_ptrs[i + 1] -
-                                       cell_data.reference_point_ptrs[i]);
-
-        const ArrayView<const T> force_lagrange(force_buffer.data() + cell_data.reference_point_ptrs[i],
-                                     cell_data.reference_point_ptrs[i + 1] -
-                                       cell_data.reference_point_ptrs[i]);
 
         phi_curvature.reinit(cell, unit_points);
         phi_normal.reinit(cell, unit_points);
@@ -1210,31 +1283,30 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
         // perform operation at quadrature points
         for (unsigned int q = 0; q < unit_points.size(); ++q)
           {
-            std::cout << "q = " << q << "   of " << unit_points.size() << std::endl;
             Assert(phi_normal.get_value(q).norm() > 0, ExcNotImplemented());
             const auto normal = phi_normal.get_value(q) / phi_normal.get_value(q).norm();
-            const auto curvature_hybrid = phi_curvature.get_value(q);
+            /*const auto curvature_hybrid = phi_curvature.get_value(q);
             std::cout << "normal = " << normal[0] << " " << normal[1] << std::endl;
             double result_1 = 0.0;
             double result_2 = 0.0;
             for (unsigned int i = 0; i < spacedim; ++i)
             {
-              //result_1 += (force_l_values[q][i] * normal[i]);
-              //result_2 +=  (normal[i] * normal[i]);
+              result_1 += (force_l_values[q][i] * normal[i]);
+              result_2 +=  (normal[i] * normal[i]);
             }
             //const auto curvature_hybrid = result_1/(surface_tension * result_2);
+            
             std::cout << "hybrid curvature = " << curvature_hybrid 
                       //<< "  force = " << force_l_values[q][0] << " " << force_l_values[q][1] 
                       << "  force = " << force_lagrange[q][0] << " " << force_lagrange[q][1] 
                       << "  normal normiert = " << normal[0] << " " << normal[1] 
                       << "  normal = " << phi_normal.get_value(q)[0] << " " << phi_normal.get_value(q)[1] 
                       << std::endl;
-            
-            //const auto curvature_hybrid = (force_l_values[q] * normal) /(normal * normal * surface_tension);
+            */
            // curvature_x_JxW = JxW *curvature_hybrid
-           // const auto force_hybrid = surface_tension  * normal * curvature_x_JxW[q]; 
-            const auto force_hybrid = surface_tension  * normal * curvature_hybrid * JxW[q]; 
-            std::cout << "hybrid force = " << force_hybrid[0] << " " << force_hybrid[1] << std::endl;
+            const auto force_hybrid = surface_tension  * normal * curvature_x_JxW[q]; 
+            //const auto force_hybrid = surface_tension  * normal * curvature_hybrid * JxW[q]; 
+            //std::cout << "hybrid force = " << force_hybrid[0] << " " << force_hybrid[1] << std::endl;
             phi_force.submit_value(force_hybrid, q);         
             
           }
@@ -1243,15 +1315,15 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
         {
           buffer_dim.resize(dof_handler_dim.get_fe().n_dofs_per_cell());
           local_dof_indices.resize(dof_handler_dim.get_fe().n_dofs_per_cell());
-          std::cout << "integrate" << std::endl;
+
           phi_force.integrate(buffer_dim, EvaluationFlags::values);
-          std::cout << "here" << std::endl;
+          
           cell_dim->get_dof_indices(local_dof_indices);
-          std::cout << "or here" << std::endl;
+          
           constraints.distribute_local_to_global(buffer_dim,
                                                  local_dof_indices,
                                                  force_vector);
-          std::cout << "end" << std::endl;
+                                                 
         }
       }
   };
