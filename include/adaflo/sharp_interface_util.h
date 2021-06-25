@@ -833,12 +833,15 @@ compute_force_vector_sharp_interface(const Triangulation<dim, spacedim> &surface
                                      const VectorType &          curvature_solution,
                                      VectorType &                force_vector,
                                      const VectorType &          ls_vector,
-                                     std::vector<Point<spacedim>>  &  interface_points)
+                                     std::vector<Point<spacedim>>  &  interface_points,
+                                     Triangulation<spacedim - 1, spacedim> &tria)
 {
   using T = double; // type of data to be communicated (only |J|xW)
 
   const unsigned int                                n_subdivisions = 3;
-  GridTools::MarchingCubeAlgorithm<dim, VectorType> mc(mapping,
+  std::vector<::CellData<spacedim - 1>>             interface_cells;
+  SubCellData                                       subcelldata;
+  GridTools::MarchingCubeAlgorithm<spacedim, VectorType> mc(mapping,
                                                        dof_handler.get_fe(),
                                                        n_subdivisions);
 
@@ -1006,17 +1009,34 @@ compute_force_vector_sharp_interface(const Triangulation<dim, spacedim> &surface
 
       // determine points and cells of aux surface triangulation
       std::vector<Point<spacedim>>          surface_vertices;
-      std::vector<::CellData<dim - 1>> surface_cells;
+      std::vector<::CellData<spacedim - 1>> surface_cells;
+      //SubCellData                    subcelldata;
 
       // run square/cube marching algorithm
       mc.process_cell(cell, ls_vector, 0.0, surface_vertices, surface_cells);
-      for(int i; i < surface_vertices.size(); ++i)
+      //mc.process_cell(dof_handler, ls_vector, 0.0, surface_vertices, surface_cells);
+
+      // note: the following operation does not work for simplex meshes yet
+      // GridTools::delete_duplicated_vertices (vertices, cells, subcelldata,
+      // considered_vertices);
+     // tria.create_triangulation(surface_vertices, surface_cells, subcelldata);
+     std::cout << "size surface vertices = " << surface_vertices.size() << "  cell size = " << surface_cells.size() << std::endl;
+
+     for(unsigned int i=0; i < surface_vertices.size(); ++i)
       {
-        std::cout << "interface pts = " << surface_vertices[i] << std::endl;
+        //std::cout << "interface pts = " << surface_vertices[i] << std::endl;
         interface_points.push_back(surface_vertices[i]);
+        std::cout << "interface pts = " << interface_points[i] << std::endl;
+      }
+      for(unsigned int i=0; i < surface_cells.size(); ++i)
+      {
+        interface_cells.push_back(surface_cells[i]);
       }
       
     }
+    std::cout << "size interface pts = " << interface_points.size() << "  cell size = " << interface_cells.size() << std::endl;
+  tria.create_triangulation(interface_points, interface_cells, subcelldata);
+  //TODO: test if tria is empty
 
   eval.template process_and_evaluate<T>(integration_values, buffer, integration_function);
 

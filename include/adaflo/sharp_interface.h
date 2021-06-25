@@ -22,6 +22,9 @@
 #include <deal.II/fe/mapping_fe_field.h>
 
 #include <deal.II/grid/grid_tools_cache.h>
+#include <deal.II/grid/tria.h>
+#include <deal.II/grid/grid_generator.h>
+#include <deal.II/grid/grid_out.h>
 
 #include <deal.II/matrix_free/fe_point_evaluation.h>
 
@@ -40,6 +43,9 @@
 #include <adaflo/util.h>
 
 #include <filesystem>
+#include <iostream>
+#include <fstream>
+#include <cmath>
 
 template <int dim>
 class LevelSetSolver
@@ -520,7 +526,7 @@ public:
   std::pair<double, double>
   get_concentration_range() ;
 
-  const std::vector<Point<2>> &
+  std::vector<Point<2>> 
   get_level_set_interface();
 
   virtual std::vector<double>
@@ -655,8 +661,8 @@ public:
   }
 
   //TODO fill function if needed yesterday
-  const std::vector<Point<dim>> &
-  get_level_set_interface()
+  std::vector<Point<dim>> 
+  get_level_set_interface() 
   {
     return interface_points_mc;
   }
@@ -983,6 +989,14 @@ public:
                                             path.filename(),
                                             navier_stokes_solver.time_stepping.step_no(),
                                             MPI_COMM_WORLD);
+
+
+      // interface (Phi=0) contour triangulation
+      //TODO: file empty! change file format, output in folder
+      std::ofstream out("countour_grid.svg");
+      GridOut       grid_out;
+      grid_out.write_svg(contour_tria, out);
+      std::cout << "Grid written to contour_grid.svg" << std::endl;
       }
   }
 
@@ -1492,7 +1506,8 @@ private:
         level_set_solver.get_curvature_vector(),
         navier_stokes_solver.user_rhs.block(0),
         level_set_solver.get_level_set_vector(),
-        interface_points_mc);
+        interface_points_mc,
+        contour_tria);
     else if (!use_auxiliary_surface_mesh && use_sharp_interface)
       compute_force_vector_sharp_interface(
         QGauss<dim - 1>(2 /*TODO*/),
@@ -1580,8 +1595,8 @@ private:
   }
 
   //TODO yesterday
-  const std::vector<Point<dim>> &
-  get_level_set_interface()
+  std::vector<Point<dim>>
+  get_level_set_interface() 
   {
     return interface_points_mc;
   }
@@ -1603,6 +1618,7 @@ private:
   LevelSetSolver<dim> level_set_solver;
   //TwoPhaseBaseAlgorithm<dim> & two_phase_solver;
   std::vector<Point<dim>>     interface_points_mc;
+  Triangulation<dim - 1, dim> contour_tria;
 
   // surface mesh
   DoFHandler<dim - 1, dim>               euler_dofhandler;

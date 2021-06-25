@@ -317,7 +317,7 @@ MicroFluidicProblem<dim>::run()
       solution_data.push_back(solver->compute_bubble_statistics(global_omega_diameter));
       //TODO yesterday
       //interface_data.push_back(solver->get_level_set_interface());
-      auto interface_data = solver->get_level_set_interface();
+      //auto interface_data = solver->get_level_set_interface();
 
       if (solution_data.size() > 0 &&
         Utilities::MPI::this_mpi_process(triangulation.get_communicator()) == 0 &&
