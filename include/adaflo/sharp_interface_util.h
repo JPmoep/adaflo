@@ -954,6 +954,7 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
     std::vector<Vector<double>> normal_l_values, force_l_values;
     double                      result_1, result_2;
     std::vector<T> integration_values;
+    std::vector<Vector<double>> force_buffer;
 
     FEValues<dim, spacedim> fe_l_eval(surface_mapping,
                                     surface_dofhandler.get_fe(),
@@ -966,8 +967,7 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
                                         //surface_dofhandler_dim.get_fe().get_unit_support_points(),
                                         surface_quadrature,
                                         update_values);
-    
-    //const auto &tria_surface = surface_dofhandler.get_triangulation();
+  
 
     for (const auto &cell : surface_dofhandler.active_cell_iterators())
       {
@@ -1003,13 +1003,17 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
             for (unsigned int i = 0; i < spacedim; ++i)
             {
               result_1 += (force_l_values[q][i] * normal_l_values[q][i]);
-              result_2 +=  (normal_l_values[q][i] * normal_l_values[q][i]) ;
+              result_2 +=  (normal_l_values[q][i] * normal_l_values[q][i]);
+              force_buffer.push_back(force_l_values[q][i]);
             }
             curvature_hybrid_values[q] = result_1/(surface_tension * result_2);
+            std::cout << "normal = " << normal_l_values[q][0] << " " << normal_l_values[q][1]
+                      << " force = " << force_l_values[q][0] << " " << force_l_values[q][1] 
+                      << " hybrid curvature = " << curvature_hybrid_values[q] << std::endl;
             //std::cout << "hybrid curvature = " << curvature_hybrid_values[q] 
             //          << "  JxW = " << fe_l_eval.JxW(q) << std::endl;
             //TODO: okay to do like that?
-            integration_values.push_back(fe_l_eval.JxW(q) * curvature_hybrid_values[q]);
+            
           }
           cell->set_dof_values(curvature_hybrid_values, curvature_hybrid_vector);
       }
@@ -1039,7 +1043,7 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
   Utilities::MPI::RemotePointEvaluation<spacedim, spacedim> eval;
   eval.reinit(integration_points, dof_handler.get_triangulation(), mapping);
 
- /* std::vector<T> integration_values;
+  //std::vector<T> integration_values;
   {
     //TODO: combine this with the one above?
     FE_Nothing<dim, spacedim> dummy;
@@ -1058,13 +1062,12 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
 
         for (const auto q : fe_eval.quadrature_point_indices())
         {
-          std::cout << "hybrid curvature = " << curvature_hybrid_values[q] << std::endl;
-          integration_values.push_back(fe_eval.JxW(q) * curvature_hybrid_values[q]);
+          integration_values.push_back(fe_eval.JxW(q));
         }
         
       }
   }
-  */
+  
 
   const auto integration_function = [&](const auto &values, const auto &cell_data) {
     AffineConstraints<double> constraints; // TODO: use the right ones
@@ -1078,6 +1081,10 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
     FEPointEvaluation<spacedim, spacedim> phi_force(mapping,
                                                     dof_handler_dim.get_fe(),
                                                     update_values);
+   /* FEPointEvaluation<spacedim, spacedim> force_lagrange(surface_mapping,
+                                                    surface_dofhandler_dim.get_fe(),
+                                                    update_values);
+    */
 
     std::vector<double>                  buffer;
     std::vector<double>                  buffer_dim;
@@ -1085,11 +1092,14 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
 
     for (unsigned int i = 0; i < cell_data.cells.size(); ++i)
       {
+        std::cout << "i = " << i << "   of " << cell_data.cells.size() << std::endl;
         typename DoFHandler<spacedim>::active_cell_iterator cell = {
           &eval.get_triangulation(),
           cell_data.cells[i].first,
           cell_data.cells[i].second,
           &dof_handler};
+
+          std::cout << "cell" << std::endl;
 
         typename DoFHandler<spacedim>::active_cell_iterator cell_dim = {
           &eval.get_triangulation(),
@@ -1097,18 +1107,54 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
           cell_data.cells[i].second,
           &dof_handler_dim};
 
+        std::cout << "cell dim" << std::endl;
+        TriaIterator<DoFCellAccessor<dim, spacedim, false>> dof_cell(
+          &surface_dofhandler.get_triangulation(),
+          //cell->level(),
+          //cell->index(),
+          cell_data.cells[i].first,
+          cell_data.cells[i].second,
+          &surface_dofhandler);
+        
+        TriaIterator<DoFCellAccessor<dim, spacedim, false>> dof_cell_dim(
+          &surface_dofhandler_dim.get_triangulation(), 
+          //cell_data.cells[i].first,
+          //cell_data.cells[i].second,
+          cell->level(), 
+          cell->index(), 
+          &surface_dofhandler_dim);
+
+          std::cout << "dof cell dim" << std::endl;
+
         const ArrayView<const Point<spacedim>> unit_points(
           cell_data.reference_point_values.data() + cell_data.reference_point_ptrs[i],
           cell_data.reference_point_ptrs[i + 1] - cell_data.reference_point_ptrs[i]);
 
         // values = JxW *curvature_hybrid
-        const ArrayView<const T> curvature_x_JxW(values.data() + cell_data.reference_point_ptrs[i],
+        //const ArrayView<const T> curvature_x_JxW(values.data() + cell_data.reference_point_ptrs[i],
+        //                            cell_data.reference_point_ptrs[i + 1] -
+        //                               cell_data.reference_point_ptrs[i]);
+        const ArrayView<const T> JxW(values.data() + cell_data.reference_point_ptrs[i],
+                                     cell_data.reference_point_ptrs[i + 1] -
+                                       cell_data.reference_point_ptrs[i]);
+
+        const ArrayView<const T> force_lagrange(force_buffer.data() + cell_data.reference_point_ptrs[i],
                                      cell_data.reference_point_ptrs[i + 1] -
                                        cell_data.reference_point_ptrs[i]);
 
         phi_curvature.reinit(cell, unit_points);
         phi_normal.reinit(cell, unit_points);
         phi_force.reinit(cell, unit_points);
+
+        //std::cout << "fe eval reinit " << std::endl;
+        //fe_l_eval.reinit(cell);
+        //fe_l_eval_dim.reinit(dof_cell_dim); 
+        //std::cout << "resize" << std::endl;
+        //force_l_values.resize(fe_l_eval.dofs_per_cell, Vector<double>(spacedim));
+        //std::cout << "get value" << std::endl;
+        //fe_l_eval_dim.get_function_values(force_lagrange_vector, force_l_values);
+       // std::cout << "after" << std::endl;
+        //force_lagrange.reinit(dof_cell_dim, unit_points);
 
         // gather_evaluate curvature
         {
@@ -1141,28 +1187,71 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
           phi_normal.evaluate(make_array_view(buffer_dim), EvaluationFlags::values);
         }
 
+        // gather_evaluate force lagrange
+        //TODO!
+/*        {
+          buffer_dim.resize(fe_dim.n_dofs_per_cell());
+          for (int i = 0; i < spacedim; ++i)
+            {
+              constraints.get_dof_values(force_lagrange_vector(i),
+                                         local_dof_indices.begin(),
+                                         buffer.begin(),
+                                         buffer.end());
+              fe_l_eval_dim.get_function_values(force_lagrange_vector, force_l_values);
+              for (unsigned int c = 0; c < cell->get_fe().n_dofs_per_cell(); ++c)
+                buffer_dim[fe_dim.component_to_system_index(i, c)] = force_l_values[c];
+            }
+
+          force_lagrange.evaluate(make_array_view(buffer_dim), EvaluationFlags::values);
+        }
+*/
+
+
         // perform operation at quadrature points
         for (unsigned int q = 0; q < unit_points.size(); ++q)
           {
+            std::cout << "q = " << q << "   of " << unit_points.size() << std::endl;
             Assert(phi_normal.get_value(q).norm() > 0, ExcNotImplemented());
             const auto normal = phi_normal.get_value(q) / phi_normal.get_value(q).norm();
+            const auto curvature_hybrid = phi_curvature.get_value(q);
+            std::cout << "normal = " << normal[0] << " " << normal[1] << std::endl;
+            double result_1 = 0.0;
+            double result_2 = 0.0;
+            for (unsigned int i = 0; i < spacedim; ++i)
+            {
+              //result_1 += (force_l_values[q][i] * normal[i]);
+              //result_2 +=  (normal[i] * normal[i]);
+            }
+            //const auto curvature_hybrid = result_1/(surface_tension * result_2);
+            std::cout << "hybrid curvature = " << curvature_hybrid 
+                      //<< "  force = " << force_l_values[q][0] << " " << force_l_values[q][1] 
+                      << "  force = " << force_lagrange[q][0] << " " << force_lagrange[q][1] 
+                      << "  normal normiert = " << normal[0] << " " << normal[1] 
+                      << "  normal = " << phi_normal.get_value(q)[0] << " " << phi_normal.get_value(q)[1] 
+                      << std::endl;
+            
+            //const auto curvature_hybrid = (force_l_values[q] * normal) /(normal * normal * surface_tension);
            // curvature_x_JxW = JxW *curvature_hybrid
-            const auto force_hybrid = surface_tension  * normal * curvature_x_JxW[q]; 
+           // const auto force_hybrid = surface_tension  * normal * curvature_x_JxW[q]; 
+            const auto force_hybrid = surface_tension  * normal * curvature_hybrid * JxW[q]; 
+            std::cout << "hybrid force = " << force_hybrid[0] << " " << force_hybrid[1] << std::endl;
             phi_force.submit_value(force_hybrid, q);         
+            
           }
 
         // integrate_scatter force
         {
           buffer_dim.resize(dof_handler_dim.get_fe().n_dofs_per_cell());
           local_dof_indices.resize(dof_handler_dim.get_fe().n_dofs_per_cell());
-
+          std::cout << "integrate" << std::endl;
           phi_force.integrate(buffer_dim, EvaluationFlags::values);
-
+          std::cout << "here" << std::endl;
           cell_dim->get_dof_indices(local_dof_indices);
-
+          std::cout << "or here" << std::endl;
           constraints.distribute_local_to_global(buffer_dim,
                                                  local_dof_indices,
                                                  force_vector);
+          std::cout << "end" << std::endl;
         }
       }
   };
