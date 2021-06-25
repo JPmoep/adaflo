@@ -833,7 +833,7 @@ compute_force_vector_sharp_interface(const Triangulation<dim, spacedim> &surface
                                      const VectorType &          curvature_solution,
                                      VectorType &                force_vector,
                                      const VectorType &          ls_vector,
-                                     std::vector<Point<2>>  &  interface_points)
+                                     std::vector<Point<spacedim>>  &  interface_points)
 {
   using T = double; // type of data to be communicated (only |J|xW)
 
@@ -1005,12 +1005,17 @@ compute_force_vector_sharp_interface(const Triangulation<dim, spacedim> &surface
         continue; 
 
       // determine points and cells of aux surface triangulation
-      std::vector<Point<dim>>          surface_vertices;
+      std::vector<Point<spacedim>>          surface_vertices;
       std::vector<::CellData<dim - 1>> surface_cells;
 
       // run square/cube marching algorithm
       mc.process_cell(cell, ls_vector, 0.0, surface_vertices, surface_cells);
-      interface_points.push_back(surface_vertices);
+      for(int i; i < surface_vertices.size(); ++i)
+      {
+        std::cout << "interface pts = " << surface_vertices[i] << std::endl;
+        interface_points.push_back(surface_vertices[i]);
+      }
+      
     }
 
   eval.template process_and_evaluate<T>(integration_values, buffer, integration_function);

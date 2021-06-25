@@ -508,7 +508,6 @@ private:
 //template class LevelSetSolver<2>;
 
 
-
 class SharpInterfaceSolver
 {
 public:
@@ -520,6 +519,9 @@ public:
 
   std::pair<double, double>
   get_concentration_range() ;
+
+  const std::vector<Point<2>> &
+  get_level_set_interface();
 
   virtual std::vector<double>
   compute_bubble_statistics(
@@ -656,7 +658,7 @@ public:
   const std::vector<Point<dim>> &
   get_level_set_interface()
   {
-    return 0;
+    return interface_points_mc;
   }
 
   //TODO: fill function if needed
@@ -801,6 +803,7 @@ private:
   VectorType                             surface_coordinates_vector;
   std::shared_ptr<Mapping<dim - 1, dim>> euler_mapping;
 
+  std::vector<Point<dim>>     interface_points_mc;
   VectorType normal_vector;
   VectorType curvature_vector;
 };
@@ -1599,7 +1602,7 @@ private:
   NavierStokes<dim> & navier_stokes_solver;
   LevelSetSolver<dim> level_set_solver;
   //TwoPhaseBaseAlgorithm<dim> & two_phase_solver;
-  std::vector<Point<2>>     interface_points_mc;
+  std::vector<Point<dim>>     interface_points_mc;
 
   // surface mesh
   DoFHandler<dim - 1, dim>               euler_dofhandler;
