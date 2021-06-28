@@ -993,9 +993,9 @@ public:
 
       // interface (Phi=0) contour triangulation
       //TODO: file empty! change file format, output in folder
-      std::ofstream out("countour_grid.svg");
+      std::ofstream out("countour_grid.vtu");
       GridOut       grid_out;
-      grid_out.write_svg(contour_tria, out);
+      grid_out.write_vtu(contour_tria, out);
       std::cout << "Grid written to contour_grid.svg" << std::endl;
       }
   }

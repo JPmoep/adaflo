@@ -841,6 +841,8 @@ compute_force_vector_sharp_interface(const Triangulation<dim, spacedim> &surface
   const unsigned int                                n_subdivisions = 3;
   std::vector<::CellData<spacedim - 1>>             interface_cells;
   SubCellData                                       subcelldata;
+  std::vector<unsigned int> considered_vertices;     
+  
   GridTools::MarchingCubeAlgorithm<spacedim, VectorType> mc(mapping,
                                                        dof_handler.get_fe(),
                                                        n_subdivisions);
@@ -1034,8 +1036,11 @@ compute_force_vector_sharp_interface(const Triangulation<dim, spacedim> &surface
       }
       
     }
-    std::cout << "size interface pts = " << interface_points.size() << "  cell size = " << interface_cells.size() << std::endl;
+    //std::cout << "size interface pts = " << interface_points.size() << "  cell size = " << interface_cells.size() << std::endl;
+    GridTools::delete_duplicated_vertices (interface_points, interface_cells, subcelldata, considered_vertices);
   tria.create_triangulation(interface_points, interface_cells, subcelldata);
+  
+  
   //TODO: test if tria is empty
 
   eval.template process_and_evaluate<T>(integration_values, buffer, integration_function);
