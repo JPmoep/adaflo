@@ -1035,9 +1035,10 @@ compute_force_vector_sharp_interface(const Triangulation<dim, spacedim> &surface
       }
       
     }
-    std::cout << "size interface pts = " << interface_points.size() << "  cell size = " << interface_cells.size() << std::endl;
-    GridTools::delete_duplicated_vertices (interface_points, interface_cells, subcelldata, considered_vertices);
-    tria.create_triangulation(interface_points, interface_cells, subcelldata);
+   // std::cout << "size interface pts = " << interface_points.size() << "  cell size = " << interface_cells.size() << std::endl;
+   // GridTools::delete_duplicated_vertices (interface_points, interface_cells, subcelldata, considered_vertices);
+   // tria.create_triangulation(interface_points, interface_cells, subcelldata);
+    //std::cout << "size interface pts = " << interface_points.size() << "  cell size = " << interface_cells.size() << std::endl;
   //TODO: test if tria is empty
 
   eval.template process_and_evaluate<T>(integration_values, buffer, integration_function);

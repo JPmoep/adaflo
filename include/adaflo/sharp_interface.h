@@ -993,34 +993,37 @@ public:
 
       // interface (Phi=0) contour triangulation
       //TODO: file empty! change file format, output in folder
-      std::ofstream out("contour_grid.vtk");
+      /*std::ofstream out("contour_grid.vtk");
       GridOut       grid_out;
       grid_out.write_vtk(contour_tria, out);
       std::cout << "Grid written to contour_grid.vtk" << std::endl;
+      */
 
       bool first_output = true;
       std::ostringstream filename_contour;
         filename_contour << output_filename << "_contour"
                   << "-" << navier_stokes_solver.time_stepping.step_no() << ".csv";
 
-        std::fstream output_positions3(filename_contour.str().c_str(),
+        std::fstream output_positions(filename_contour.str().c_str(),
                                         first_output ? std::ios::out :
                                                       std::ios::out | std::ios::app);
 
-        output_positions3.precision(14);
+        output_positions.precision(14);
         if (first_output)
-          output_positions3
+          output_positions
             << "x_pos, y_pos, z_pos"
             << std::endl;
         for (unsigned int i = 0; i < interface_points_mc.size(); ++i)
           {
             //output_positions3 << "  ";
             for (unsigned int j = 0; j < dim; ++j)
-              output_positions3 << interface_points_mc[i][j] << ",";
-            output_positions3 << std::endl;
+              output_positions << interface_points_mc[i][j] << ",";
+            output_positions << std::endl;
           }
+          //std::cout << "size interface pts = " << interface_points_mc.size() << " dim = " << dim << std::endl;
         interface_points_mc.clear();
         first_output = false;
+        std::cout << "Grid written to contour.csv" << std::endl;
       }
   }
 
