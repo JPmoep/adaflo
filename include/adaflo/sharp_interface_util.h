@@ -282,8 +282,8 @@ namespace dealii
                   const auto i =
                     euler_dofhandler.get_fe().component_to_system_index(comp, q);
                   temp[i] = fe_eval.quadrature_point(q)[comp] + dt/6*(K1[comp] + 2*K2[comp] + 2*K3[comp] + K4[comp]);
-                   std::cout << "i = " << i << ": quad pt = " << fe_eval.quadrature_point(q)[comp] << "  and temp = " << temp[i] << std::endl;
-                  std::cout << "k1 = " << K1[comp] << " and K2 = " << K2[comp] << " and K3 = " << K3[comp] << " and K4 = " << K4[comp] << "\n" << std::endl;
+                  // std::cout << "i = " << i << ": quad pt = " << fe_eval.quadrature_point(q)[comp] << "  and temp = " << temp[i] << std::endl;
+                  //std::cout << "k1 = " << K1[comp] << " and K2 = " << K2[comp] << " and K3 = " << K3[comp] << " and K4 = " << K4[comp] << "\n" << std::endl;
                 }
             }                            
           cell->set_dof_values(temp, euler_coordinates_vector_temp);
