@@ -1449,14 +1449,14 @@ private:
 
       compute_normal(*euler_mapping, euler_dofhandler_dim, normal_l_vector);
      
-      /*compute_curvature(*euler_mapping,
+      compute_curvature(*euler_mapping,
                         euler_dofhandler_dim,
                         euler_dofhandler,
                         QGaussLobatto<dim - 1>(euler_dofhandler.get_fe().degree + 1),
                         normal_l_vector,
                         curvature_l_vector);
-      */
-      compute_curvature_level_set(navier_stokes_solver.mapping,
+      
+      /*compute_curvature_level_set(navier_stokes_solver.mapping,
                         level_set_solver.get_dof_handler(),
                         *euler_mapping,
                         euler_dofhandler_dim,
@@ -1465,13 +1465,17 @@ private:
                         normal_l_vector,
                         curvature_l_vector,
                         level_set_solver.get_normal_vector());
-      
+      */
       compute_local_lagragian_force(*euler_mapping,
                         euler_dofhandler_dim,
                         euler_dofhandler,
-                        //QGauss<dim - 1>(euler_dofhandler_dim.get_fe().degree + 1),
-                        QGaussLobatto<dim - 1>(euler_dofhandler.get_fe().degree + 1),
+                        navier_stokes_solver.mapping,
+                        level_set_solver.get_dof_handler(),
+                        QGauss<dim - 1>(euler_dofhandler_dim.get_fe().degree + 1),
+                        //QGaussLobatto<dim - 1>(euler_dofhandler.get_fe().degree + 1),
                         navier_stokes_solver.get_parameters().surface_tension,
+                        level_set_solver.get_curvature_vector(),
+                        level_set_solver.get_normal_vector(),
                         normal_l_vector,
                         curvature_l_vector,
                         surface_force_lagrange_vector);
