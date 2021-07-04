@@ -323,16 +323,18 @@ namespace dealii
       std::vector<types::global_dof_index> temp_dof_indices;
 
       std::array<std::vector<double>, spacedim> evaluation_values_normal;
-      
-      //for norm of level set
-      Vector<double> ls_temp;
-      double ls_sum = 0.0;
 
       const int n_iter = 15;
-      const double tol = 0.02; //0.005; //0.02; //0.1
+      const double tol = 0.005; //0.02; //0.1
       double distance_tol = (1 - tol * tol) > 1e-2 ?
                         eps_used * std::log((1. + tol) / (1. - tol)) :
                          0;
+      
+      //for norm of level set
+      Vector<double> ls_temp;
+      double ls_sum;
+
+      //std::vector<double>                  ls_max, ls_norm;
       ls_max.resize(n_iter);
       ls_norm.resize(n_iter);
       levelset_at_surface.clear();
@@ -342,26 +344,35 @@ namespace dealii
       levelset_vector.update_ghost_values();
       normal_vector.update_ghost_values();
 
-      std::vector<Point<spacedim>> evaluation_points;
+      std::vector<Point<spacedim>> middle_points;
       std::vector<Point<spacedim>> left_points;
       std::vector<Point<spacedim>> right_points;
       std::vector<Point<spacedim>> new_points;
+      Point<spacedim> default_point;
+      for (unsigned int comp = 0; comp < spacedim; ++comp)
+        default_point[comp] = 9999.;
 
+      
+      // starting point of bisection method
       for (const auto &cell : euler_dofhandler.active_cell_iterators())
         {
           fe_eval.reinit(cell);
 
           for (const auto q : fe_eval.quadrature_point_indices())
           {
-            evaluation_points.push_back(fe_eval.quadrature_point(q));
+            middle_points.push_back(fe_eval.quadrature_point(q));
             left_points.push_back(fe_eval.quadrature_point(q));
             right_points.push_back(fe_eval.quadrature_point(q));
-            new_points.push_back(9999.);
+            new_points.push_back(default_point);
           }
             
         }
 
-      Utilities::MPI::RemotePointEvaluation<spacedim, spacedim> cache, cache_left, chache_right;
+       std::cout << "size euler_temp = " << euler_coordinates_vector_temp.size() << "  size euler = "
+                  << euler_coordinates_vector.size() << " size new points = " << new_points.size() << std::endl;
+  
+
+      Utilities::MPI::RemotePointEvaluation<spacedim, spacedim> cache, cache_left, cache_right;
       
       cache_left.reinit(left_points, background_dofhandler.get_triangulation(), background_mapping);
 
@@ -376,7 +387,7 @@ namespace dealii
                                          background_dofhandler,
                                          levelset_vector);
           
-      //first loop over all cells to get a neighbor point
+      //first loop over all cells to get the next/right point
       int counter = 0;
 
       for (const auto &cell : euler_dofhandler.active_cell_iterators())
@@ -400,31 +411,41 @@ namespace dealii
 
               for (unsigned int comp = 0; comp < spacedim; ++comp)
               {
-                temp_q[comp] = 
-                        fe_eval.quadrature_point(q)[comp]  - normal[comp] * distance;
-                right_points[counter][comp] = temp_q[comp];
-                middle_point[comp] = (left_points[counter][comp] + right_points[counter][comp])/2;
-                evaluation_points[counter][comp] = middle_point[comp];
+                right_points[counter][comp] = fe_eval.quadrature_point(q)[comp]  - normal[comp] * distance;
+                //computation of x=(a+b)/2 for next iteration of bisection cycle
+                middle_points[counter][comp] = (left_points[counter][comp] + right_points[counter][comp])/2;
               }
               counter++;
             }
         }
+      
 
-        int j = 0;
+      //starting bisection cycle
+      //variable for number of bisection cycles till a maximal number
+      for(int j = 0; j < n_iter; ++j)
+      {
+         //counter for points which have not reach tolerance yet
         unsigned int component = 0;
-        for(int i = 0; i< new_points.size(); i++)
+        for(int i = 0; i < new_points.size(); i++)
         {
-          for(int j = 0; j<spacedim; j++)
+          for(int c = 0; c < spacedim; c++)
           {
-            if(new_points[i][j] == 9999.)
+            if(new_points[i][c] == 9999.)
               component++;
           }
         }
-        if(component != 0 || j == (n_iter-1) )
+        std::cout << "component = " << component << " iter = " << j << std::endl;
+        counter = 0;
+        ls_max[j] = 0.0;
+        ls_sum = 0.0;
+
+        // stop till all points reached tolerance 
+        if(component != 0)
         {
+          std::cout << "if bisec cylce j = " << j << std::endl;
           cache_left.reinit(left_points, background_dofhandler.get_triangulation(), background_mapping);
           cache_right.reinit(right_points, background_dofhandler.get_triangulation(), background_mapping);
-          cache.reinit(evaluation_points, background_dofhandler.get_triangulation(), background_mapping);
+          cache.reinit(middle_points, background_dofhandler.get_triangulation(), background_mapping);
             
           const auto left_evaluation_values_ls = 
             VectorTools::point_values<1>(cache_left,
@@ -441,99 +462,173 @@ namespace dealii
                                           background_dofhandler,
                                           levelset_vector);
 
-          counter = 0;
-
           for (const auto &cell : euler_dofhandler.active_cell_iterators())
-            {
-              fe_eval.reinit(cell);
+          {
+            fe_eval.reinit(cell);
 
-              for (const auto q : fe_eval.quadrature_point_indices())
+            for (const auto q : fe_eval.quadrature_point_indices())
+              {
+                const auto right_phi = right_evaluation_values_ls[counter];
+                const auto left_phi = left_evaluation_values_ls[counter];  
+                const auto middle_phi = middle_evaluation_values_ls[counter];
+
+                double distance = (1 - right_phi * right_phi) > 1e-2 ?
+                  eps_used * std::log((1. + right_phi) / (1. - right_phi)) : 0;
+
+                Point<spacedim> normal;
+                for (unsigned int comp = 0; comp < spacedim; ++comp)
+                  normal[comp] = evaluation_values_normal[comp][counter];
+                
+                if(normal.norm() > 1e-10)
+                    normal/=normal.norm();
+                
+                // interface is not in intervall
+                if(left_phi * right_phi > 0)
                 {
-                  const auto right_phi = right_evaluation_values_ls[counter];
-                  const auto left_phi = left_evaluation_values_ls[counter];  
-                  const auto middle_phi = middle_evaluation_values_ls[counter];
-                  
-                  if(left_phi * right_phi > 0)
+                  for (unsigned int comp = 0; comp < spacedim; ++comp)
                   {
+                    //set a = b and move b forward with phi*n
+                    left_points[counter][comp] = right_points[counter][comp];
+                    right_points[counter][comp] = left_points[counter][comp] - normal[comp] * distance;
+                    //TODO: check
+                    //new_points[counter][comp] = std::min(left_points[counter][comp], right_points[counter][comp]);
+                  }
+                  //ls norm output
+                  ls_max[j] = std::max(ls_max[j], std::abs(right_phi));
+                  ls_sum += right_phi * right_phi;
+                }
+                // interface is in intervall
+                else if(left_phi * right_phi < 0)
+                {
+                  //interface is in [a,m]
+                  if(left_phi * middle_phi < 0)
+                  { 
+                    // set middle point m as new right point b
                     for (unsigned int comp = 0; comp < spacedim; ++comp)
-                      new_points[counter][comp] = std::min(left_points[counter][comp], right_points[counter][comp]);
-                  }
-                  else if(left_phi * right_phi < 0)
-                  {
-                    if(left_phi * middle_phi < 0)
-                    {
-                      for (unsigned int comp = 0; comp < spacedim; ++comp)
-                        right_points[counter][comp] =  evaluation_points[counter][comp];
-                    }
-                    else if(left_phi * middle_phi > 0)
-                    {
-                      for (unsigned int comp = 0; comp < spacedim; ++comp)
-                        left_points[counter][comp] =  evaluation_points[counter][comp];
-                    }
-                  }
-                  for (unsigned int comp = 0; comp < spacedim; ++comp)
-                  {
-                    // stop criterion of bisection method if interval smaller than tolerance
-                    if(std::abs(left_points[counter][comp] - right_points[counter][comp]) < tol)
-                    // set new interface point
-                      new_points[counter][comp] = std::min(left_points[counter][comp], right_points[counter][comp]);
+                      right_points[counter][comp] =  middle_points[counter][comp];
                     
-                    //compute new middle point for next iteration
-                    middle_point[comp] = (left_points[counter][comp] + right_points[counter][comp])/2;
-                    evaluation_points[counter][comp] = middle_point[comp];  
+                    //ls norm output
+                    ls_max[j] = std::max(ls_max[j], std::abs(left_phi));
+                    ls_sum += left_phi * left_phi;
                   }
-                  counter++;
+                  //interface is in [m,b]
+                  else if(left_phi * middle_phi > 0)
+                  {
+                    // set middle point m as new left point a
+                    for (unsigned int comp = 0; comp < spacedim; ++comp)
+                      left_points[counter][comp] =  middle_points[counter][comp];
+
+                    //ls norm output
+                    ls_max[j] = std::max(ls_max[j], std::abs(right_phi));
+                    ls_sum += right_phi * right_phi;
+                  }
                 }
-            }
-            j++;
-          }                 
-          cache.reinit(new_points, background_dofhandler.get_triangulation(), background_mapping);
-          const auto evaluation_values_ls = 
-            VectorTools::point_values<1>(cache,
-                                          background_dofhandler,
-                                          levelset_vector);
-          counter = 0;
-          ls_max[j] = 0.0;
-
-          for (const auto &cell : euler_dofhandler.active_cell_iterators())
-            {
-              fe_eval.reinit(cell);
-
-              temp.reinit(fe_eval.dofs_per_cell);
-              temp_dof_indices.resize(fe_eval.dofs_per_cell);
-              ls_temp.reinit(fe_eval.n_quadrature_points);
-
-              cell->get_dof_indices(temp_dof_indices);
-              cell->get_dof_values(euler_coordinates_vector, temp);
-
-              for (const auto q : fe_eval.quadrature_point_indices())
+                // stop criterion of bisection method if interval smaller than tolerance
+                std::vector<double> diff;
+                diff.resize(spacedim);
+                double interval_size = 0.;
+                for (unsigned int comp = 0; comp < spacedim; ++comp)
                 {
-                  const auto phi = evaluation_values_ls[counter]; 
-                  for (unsigned int comp = 0; comp < spacedim; ++comp)
-                    {
-                      temp[euler_dofhandler.get_fe().component_to_system_index(comp, q)] = 
-                            new_points[counter][comp];
-                    }    
-                  
-                  ls_max[j] = std::max(ls_max[j], std::abs(phi));
-                  ls_sum += phi * phi;
-                  levelset_at_surface.push_back(std::abs(phi));         
-                  ls_temp[q] = phi;
-                  counter++; 
+                  //std::cout.precision(8);
+                  //std::cout << "left  = "  << left_points[counter][comp]
+                  //          << "  right  = "  << right_points[counter][comp]<< std::endl;
+                  diff[comp] = left_points[counter][comp] - right_points[counter][comp];
+                  //interval_size += diff[comp] * diff[comp];
                 }
-              cell->set_dof_values(temp, euler_coordinates_vector_temp);
-              cell->set_dof_values(ls_temp, levelset_at_surface_vector);
-            }
-          //std::cout << "size eval pts = " << evaluation_points.size() << "    size new pts = " << new_points.size()  << std::endl;
-          cache.reinit(new_points, background_dofhandler.get_triangulation(), background_mapping);
-          euler_coordinates_vector = euler_coordinates_vector_temp;
+                interval_size = std::max(diff[0],diff[1]);
+                //if(std::sqrt(interval_size) < tol)
+                if(interval_size < distance_tol)
+                {
+                  //std::cout << "interval size  = "  << interval_size << std::endl;
+                  for (unsigned int comp = 0; comp < spacedim; ++comp)
+                  {
+                    // set new interface point
+                    new_points[counter][comp] = std::min(left_points[counter][comp], right_points[counter][comp]);
+                  }
+                }
+                //compute new middle point for next iteration
+                for (unsigned int comp = 0; comp < spacedim; ++comp)
+                  middle_points[counter][comp] = (left_points[counter][comp] + right_points[counter][comp])/2;
+
+                counter++;
+              }
+          }
           
           //evaluate l2 norm of level set
           ls_norm[j] = std::sqrt(ls_sum);
-          ls_sum = 0.0;
           std::cout <<  "tol = " << tol << "  dist tol = " << distance_tol 
                   << "   ||phi||_max = " << ls_max[j] <<  "   ||phi||_2 = " << ls_norm[j] << std::endl;
-           
+        }
+        else
+        {
+          // check if all points got a new position
+          unsigned int fault_points = 0;
+          for(unsigned int i = 0; i < new_points.size(); i++)
+          {
+            for(int c = 0; c < spacedim; c++)
+            {
+              //std::cout << "new points = " << new_points[i][c] << std::endl;
+              if(new_points[i][c] == 9999.)
+              {
+                // set new interface point
+                new_points[i][c] = std::min(left_points[i][c], right_points[i][c]);
+                fault_points++;
+              }
+            }
+          }
+          std::cout << "else fault points = " << fault_points << std::endl;
+          //evaluate l2 norm of level set
+          ls_norm[j] = std::sqrt(ls_sum);
+          break;
+        }
+      }                 
+  
+      cache.reinit(new_points, background_dofhandler.get_triangulation(), background_mapping);
+      const auto evaluation_values_ls = 
+        VectorTools::point_values<1>(cache,
+                                      background_dofhandler,
+                                      levelset_vector);
+      counter = 0;
+      ls_max[n_iter-1] = 0.0;
+      ls_sum = 0.0;
+
+      for (const auto &cell : euler_dofhandler.active_cell_iterators())
+        {
+          fe_eval.reinit(cell);
+
+          temp.reinit(fe_eval.dofs_per_cell);
+          temp_dof_indices.resize(fe_eval.dofs_per_cell);
+          ls_temp.reinit(fe_eval.n_quadrature_points);
+
+          cell->get_dof_indices(temp_dof_indices);
+          cell->get_dof_values(euler_coordinates_vector, temp);
+
+          for (const auto q : fe_eval.quadrature_point_indices())
+            {
+              const auto phi = evaluation_values_ls[counter]; 
+              for (unsigned int comp = 0; comp < spacedim; ++comp)
+                {
+                  temp[euler_dofhandler.get_fe().component_to_system_index(comp, q)] = 
+                        new_points[counter][comp];
+                }    
+              
+              ls_max[n_iter-1] = std::max(ls_max[n_iter-1], std::abs(phi));
+              ls_sum += phi * phi;
+              levelset_at_surface.push_back(std::abs(phi));         
+              ls_temp[q] = phi;
+              counter++; 
+            }
+          cell->set_dof_values(temp, euler_coordinates_vector_temp);
+          cell->set_dof_values(ls_temp, levelset_at_surface_vector);
+        }
+
+       euler_coordinates_vector = euler_coordinates_vector_temp;
+      
+      //evaluate l2 norm of level set
+      ls_norm[n_iter-1] = std::sqrt(ls_sum);
+      std::cout <<  "tol = " << tol << "  dist tol = " << distance_tol 
+              << "   ||phi||_max = " << ls_max[n_iter-1] <<  "   ||phi||_2 = " << ls_norm[n_iter-1] << std::endl;
+
     }
   } // namespace VectorTools
 

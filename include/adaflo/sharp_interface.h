@@ -893,6 +893,7 @@ public:
 
     if (use_auxiliary_surface_mesh)
       this->move_surface_mesh();
+
     this->update_phases();
     this->update_gravity_force();
     this->update_surface_tension();
@@ -992,12 +993,6 @@ public:
 
 
       // interface (Phi=0) contour triangulation
-      //TODO: file empty! change file format, output in folder
-      /*std::ofstream out("contour_grid.vtk");
-      GridOut       grid_out;
-      grid_out.write_vtk(contour_tria, out);
-      std::cout << "Grid written to contour_grid.vtk" << std::endl;
-      */
 
       bool first_output = true;
       std::ostringstream filename_contour;
@@ -1020,7 +1015,6 @@ public:
               output_positions << interface_points_mc[i][j] << ",";
             output_positions << std::endl;
           }
-          //std::cout << "size interface pts = " << interface_points_mc.size() << " dim = " << dim << std::endl;
         interface_points_mc.clear();
         first_output = false;
         std::cout << "Grid written to contour.csv" << std::endl;
@@ -1459,8 +1453,8 @@ private:
                                         *euler_mapping,
                                         euler_vector);
                                         */
-    //levelset_at_surface_vector.reinit(euler_dofhandler.n_dofs());
-    VectorTools::update_position_vector_level_set(level_set_solver.get_dof_handler(),
+                                       
+    /*VectorTools::update_position_vector_level_set(level_set_solver.get_dof_handler(),
                                         navier_stokes_solver.mapping,
                                         level_set_solver.get_level_set_vector(),
                                         level_set_solver.get_normal_vector(),
@@ -1471,8 +1465,21 @@ private:
                                         levelset_at_surface_vector,
                                         level_set_at_surface,
                                         level_set_at_surface_max, 
-                                        level_set_at_surface_norm);   
-                                                                   
+                                        level_set_at_surface_norm); 
+    */
+    VectorTools::update_position_vector_level_set_bisec(level_set_solver.get_dof_handler(),
+                                        navier_stokes_solver.mapping,
+                                        level_set_solver.get_level_set_vector(),
+                                        level_set_solver.get_normal_vector(),
+                                        level_set_solver.get_eps_used(),
+                                        euler_dofhandler,
+                                        *euler_mapping,
+                                        euler_vector,
+                                        levelset_at_surface_vector,
+                                        level_set_at_surface,
+                                        level_set_at_surface_max, 
+                                        level_set_at_surface_norm);  
+                                                                                                           
   }
 
   void
