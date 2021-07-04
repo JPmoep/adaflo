@@ -325,6 +325,8 @@ namespace dealii
       std::array<std::vector<double>, spacedim> evaluation_values_normal;
 
       const int n_iter = 15;
+      //different tolerance value than for only iteration, 
+      //because its the tolerance for the interval and not the absolute derivation
       const double tol = 0.005; //0.02; //0.1
       double distance_tol = (1 - tol * tol) > 1e-2 ?
                         eps_used * std::log((1. + tol) / (1. - tol)) :
