@@ -964,8 +964,12 @@ public:
         data_out.attach_dof_handler(euler_dofhandler_dim);
         data_out.add_data_vector(euler_dofhandler, curvature_l_vector, "lagrange_curvature");
         data_out.add_data_vector(euler_dofhandler, curvature_hybrid_vector, "hybrid_curvature");
+        data_out.add_data_vector(euler_dofhandler, curvature_hybrid_ls_vector, "hybrid_ls_curvature");
+        data_out.add_data_vector(euler_dofhandler, curvature_ls_vector, "ls_curvature");
         data_out.add_data_vector(euler_dofhandler_dim, normal_l_vector, "lagrange_normal");
+        data_out.add_data_vector(euler_dofhandler_dim, normal_ls_vector, "ls_normal");
         data_out.add_data_vector(euler_dofhandler_dim, surface_force_lagrange_vector, "lagrange_force");
+        data_out.add_data_vector(euler_dofhandler_dim, surface_force_lagrange_ls_vector, "lagrange_ls_force");
 
         data_out.build_patches(
           *euler_mapping,
@@ -1471,8 +1475,8 @@ private:
                         euler_dofhandler,
                         navier_stokes_solver.mapping,
                         level_set_solver.get_dof_handler(),
-                        QGauss<dim - 1>(euler_dofhandler_dim.get_fe().degree + 1),
-                        //QGaussLobatto<dim - 1>(euler_dofhandler.get_fe().degree + 1),
+                        //QGauss<dim - 1>(euler_dofhandler_dim.get_fe().degree + 1),
+                        QGaussLobatto<dim - 1>(euler_dofhandler.get_fe().degree + 1),
                         navier_stokes_solver.get_parameters().surface_tension,
                         level_set_solver.get_curvature_vector(),
                         level_set_solver.get_normal_vector(),
@@ -1485,7 +1489,8 @@ private:
         *euler_mapping,
         euler_dofhandler,
         euler_dofhandler_dim,
-        QGauss<dim - 1>(euler_dofhandler_dim.get_fe().degree + 1),
+        //QGauss<dim - 1>(euler_dofhandler_dim.get_fe().degree + 1),
+        QGaussLobatto<dim - 1>(euler_dofhandler.get_fe().degree + 1),
         navier_stokes_solver.mapping,
         level_set_solver.get_dof_handler(),
         navier_stokes_solver.get_dof_handler_u(),

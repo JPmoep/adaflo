@@ -872,15 +872,12 @@ compute_local_lagragian_force(const Mapping<dim, spacedim> &   mapping,
   FEValues<dim, spacedim> fe_eval(mapping,
                                   dof_handler.get_fe(),
                                   quadrature,
-                                  //Quadrature<dim>(dof_handler.get_fe().get_unit_support_points()),
-                                  update_values | update_quadrature_points | update_JxW_values );
+                                  update_values | update_quadrature_points | update_normal_vectors | update_JxW_values );
   FEValues<dim, spacedim> fe_eval_dim(mapping,
                                       dof_handler_dim.get_fe(),
                                       quadrature,
-                                      //Quadrature<dim>(dof_handler_dim.get_fe().get_unit_support_points()),
                                       update_values | update_quadrature_points | update_normal_vectors | update_JxW_values);
 
-  //std::cout << "fe eval: " << fe_eval.get_fe().has_support_points() << "  fe eval dim =" << fe_eval_dim.get_fe().has_support_points() << std::endl;
   
   std::array<std::vector<double>, spacedim> evaluation_values_normal;
   std::vector<Point<spacedim>> evaluation_points;
@@ -899,7 +896,8 @@ compute_local_lagragian_force(const Mapping<dim, spacedim> &   mapping,
     }
   }
 
-  Utilities::MPI::RemotePointEvaluation<spacedim, spacedim> cache;
+  //TODO: does that true works?
+  Utilities::MPI::RemotePointEvaluation<spacedim, spacedim> cache(true);
   cache.reinit(evaluation_points, background_dofhandler.get_triangulation(), background_mapping);
 
   const auto evaluation_curvature =
@@ -940,7 +938,7 @@ compute_local_lagragian_force(const Mapping<dim, spacedim> &   mapping,
       std::vector<double>         curvature_values(fe_eval.dofs_per_cell);
       std::vector<Vector<double>> normal_values(fe_eval.dofs_per_cell,
                                                 Vector<double>(spacedim));
-      //TODO: change to evaluation at dof
+      
       fe_eval.get_function_values(curvature_vector, curvature_values);
       fe_eval_dim.get_function_values(normal_vector, normal_values);
 
@@ -954,12 +952,11 @@ compute_local_lagragian_force(const Mapping<dim, spacedim> &   mapping,
           {
             normal/=normal.norm();
           }
-          else
+          /*else
           {
-            std::cout << "else" << std::endl;
             for (unsigned c = 0; c < spacedim; ++c)
               normal[c] = normal_values[q][c];
-          }
+          }*/
 
           auto curvature = evaluation_curvature[counter];
 
@@ -968,9 +965,10 @@ compute_local_lagragian_force(const Mapping<dim, spacedim> &   mapping,
             //TODO: not sure about comp or how to do it right
             const unsigned int comp =
                 dof_handler_dim.get_fe().component_to_system_index(c, q);
-            force_temp[comp] = curvature * normal[c] * surface_tension; //normal_values[q][c] * surface_tension;
+            force_temp[comp] = curvature * normal_values[q][c] * surface_tension; //normal[c] * surface_tension; //normal_values[q][c] * surface_tension;
             force_temp_la[comp] = curvature_values[q] * normal_values[q][c] * surface_tension;
-            std::cout << "ls field curvature = " << curvature 
+            std::cout << "comp = " << comp << "  of q = " << q << "  & c = " c 
+                      << "   ls curvature = " << curvature 
                       << "   lag curv = " << curvature_values[q] 
                       << "   normal ls = " << normal[c]
                       << "   lag normal = " << normal_values[q][c] 
@@ -1117,13 +1115,11 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
 
     FEValues<dim, spacedim> fe_l_eval(surface_mapping,
                                     surface_dofhandler.get_fe(),
-                                    //surface_dofhandler.get_fe().get_unit_support_points(),
                                     surface_quadrature,
-                                    update_values | update_quadrature_points |
+                                    update_values | update_quadrature_points | update_normal_vectors |
                                       update_JxW_values);
     FEValues<dim, spacedim> fe_l_eval_dim(surface_mapping,
                                         surface_dofhandler_dim.get_fe(),
-                                        //surface_dofhandler_dim.get_fe().get_unit_support_points(),
                                         surface_quadrature,
                                         update_values);
 
@@ -1146,8 +1142,8 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
           integration_points.push_back(fe_eval.quadrature_point(q)); 
       }
   }
-
-  Utilities::MPI::RemotePointEvaluation<spacedim, spacedim> eval;
+  //TODO: check if this true is working like that
+  Utilities::MPI::RemotePointEvaluation<spacedim, spacedim> eval(true);
   eval.reinit(integration_points, dof_handler.get_triangulation(), mapping);
 
   std::array<std::vector<double>, spacedim> evaluation_values_normal;
@@ -1179,12 +1175,11 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
       fe_l_eval_dim.reinit(dof_cell_dim);
 
       force_l_values.resize(fe_l_eval.dofs_per_cell, Vector<double>(spacedim));
-      //force_l_values.reinit(fe_l_eval_dim.dofs_per_cell);
       normal_l_values.resize(fe_l_eval.dofs_per_cell, Vector<double>(spacedim));
 
       curvature_hybrid_values.reinit(fe_l_eval.dofs_per_cell);
       curvature_hybrid_values = 0.0;
-      //cell->get_dof_values(force_lagrange_vector, force_l_values);
+      
       fe_l_eval_dim.get_function_values(force_lagrange_vector, force_l_values);
       fe_l_eval_dim.get_function_values(normal_lagrange_vector, normal_l_values);
 
@@ -1196,8 +1191,8 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
 
           result_1 = 0.0;
           result_2 = 0.0;
-          if(normal.norm() > 1e-10)
-          {
+          //if(normal.norm() > 1e-10)
+          //{
             std::cout <<"normal = " << normal[0] << " " << normal[1] 
                       << " norm = " << normal.norm() << std::endl;
             normal/=normal.norm();
@@ -1212,7 +1207,7 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
                           << " force = " << force_l_values[q][c]
                           << "  result_1 = " << result_1 << " result_2 = " << result_2 << std::endl;
               }
-          }
+          //}
           /*else{
             for (unsigned int c = 0; c < spacedim; ++c)
             {
