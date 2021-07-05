@@ -897,7 +897,7 @@ compute_local_lagragian_force(const Mapping<dim, spacedim> &   mapping,
   }
 
   //TODO: does that true works?
-  Utilities::MPI::RemotePointEvaluation<spacedim, spacedim> cache(true);
+  Utilities::MPI::RemotePointEvaluation<spacedim, spacedim> cache;//(true);
   cache.reinit(evaluation_points, background_dofhandler.get_triangulation(), background_mapping);
 
   const auto evaluation_curvature =
@@ -965,15 +965,17 @@ compute_local_lagragian_force(const Mapping<dim, spacedim> &   mapping,
             //TODO: not sure about comp or how to do it right
             const unsigned int comp =
                 dof_handler_dim.get_fe().component_to_system_index(c, q);
+            //force with curvature from level-set and geometric normal
             force_temp[comp] = curvature * normal_values[q][c] * surface_tension; //normal[c] * surface_tension; //normal_values[q][c] * surface_tension;
+            //force with geometric normal and curvature
             force_temp_la[comp] = curvature_values[q] * normal_values[q][c] * surface_tension;
-            std::cout << "comp = " << comp << "  of q = " << q << "  & c = " c 
-                      << "   ls curvature = " << curvature 
+            std::cout << "comp = " << comp 
+                      << "   ls curv = " << curvature 
                       << "   lag curv = " << curvature_values[q] 
                       << "   normal ls = " << normal[c]
                       << "   lag normal = " << normal_values[q][c] 
-                    << "   force_temp = " << force_temp[comp]
-                    << "   force_temp lagrange = " << force_temp_la[comp] << std::endl;
+                    << "   force = " << force_temp[comp]
+                    << "   force lag = " << force_temp_la[comp] << std::endl;
            /*   std::cout << "curvature = " << curvature_values[q] << std::endl;
               std::cout << "normal = " << normal_values[q][c] << std::endl;
               std::cout << "JxW = " << fe_eval.JxW(q) << "    JxW fe eval dim = " << fe_eval_dim.JxW(q) << std::endl;
@@ -981,7 +983,7 @@ compute_local_lagragian_force(const Mapping<dim, spacedim> &   mapping,
           }     
           counter++;     
         }
-      cell->set_dof_values(force_temp, force_vector);
+      //cell->set_dof_values(force_temp_la, force_vector);
     }
 }
 
@@ -1106,8 +1108,7 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
   using T = double; // type of data to be communicated (only |J|xW)
 
   // for surface mesh evaluation
-  //TODO: right dimensioN???
-    Vector<double>              curvature_hybrid_values; //, force_l_values;
+    Vector<double>              curvature_hybrid_values;
     std::vector<Vector<double>> normal_l_values, force_l_values;
     double                      result_1, result_2;
     std::vector<T>              integration_values;
@@ -1143,7 +1144,7 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
       }
   }
   //TODO: check if this true is working like that
-  Utilities::MPI::RemotePointEvaluation<spacedim, spacedim> eval(true);
+  Utilities::MPI::RemotePointEvaluation<spacedim, spacedim> eval;//(true);
   eval.reinit(integration_points, dof_handler.get_triangulation(), mapping);
 
   std::array<std::vector<double>, spacedim> evaluation_values_normal;
@@ -1193,10 +1194,10 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
           result_2 = 0.0;
           //if(normal.norm() > 1e-10)
           //{
-            std::cout <<"normal = " << normal[0] << " " << normal[1] 
-                      << " norm = " << normal.norm() << std::endl;
+            //std::cout <<"normal = " << normal[0] << " " << normal[1] 
+            //          << " norm = " << normal.norm() << std::endl;
             normal/=normal.norm();
-            for (unsigned int c = 0; c < spacedim; ++c)
+            /*for (unsigned int c = 0; c < spacedim; ++c)
               {
                 const auto i =
                       surface_dofhandler.get_fe().component_to_system_index(c, q);
@@ -1207,16 +1208,15 @@ compute_hybrid_force_vector_sharp_interface(const Triangulation<dim, spacedim> &
                           << " force = " << force_l_values[q][c]
                           << "  result_1 = " << result_1 << " result_2 = " << result_2 << std::endl;
               }
+          */
           //}
-          /*else{
+          //else{
             for (unsigned int c = 0; c < spacedim; ++c)
             {
-              const auto i =
-                    surface_dofhandler.get_fe().component_to_system_index(c, q);
-              result_1 += (force_l_values[i] * normal_l_values[q][c]);
+              result_1 += (force_l_values[q][c] * normal_l_values[q][c]);
               result_2 +=  (normal_l_values[q][c] * normal_l_values[q][c]);
             }
-          } */
+          //} */
           curvature_hybrid_values[q] = result_1/(surface_tension * result_2);
           std::cout << "normal lagrange = " << normal_l_values[q][0] << " " << normal_l_values[q][1]
                     << "  normal phi = " << normal[0] << " " << normal[1]
